@@ -11,17 +11,18 @@
 #include <motors.h>
 #include <audio/microphone.h>
 
+#include <proximity.h>
 #include <audio_processing.h>
 #include <fft.h>
 #include <communications.h>
 #include <arm_math.h>
 
 //uncomment to send the FFTs results from the real microphones
-//#define SEND_FROM_MIC
+#define SEND_FROM_MIC
 
 //uncomment to use double buffering to send the FFT to the computer
 #define DOUBLE_BUFFERING
-#define TEST 
+
 static void serial_start(void)
 {
 	static SerialConfig ser_cfg = {
@@ -102,64 +103,9 @@ int main(void)
         uint16_t size = ReceiveInt16FromComputer((BaseSequentialStream *) &SD3, bufferCmplxInput, FFT_SIZE);
 
         if(size == FFT_SIZE){
-            /*
-            *   Optimized FFT
-            */
-            
-            chSysLock();
-            //reset the timer counter
-            GPTD12.tim->CNT = 0;
 
-            doFFT_optimized(FFT_SIZE, bufferCmplxInput);
-
-            time_fft = GPTD12.tim->CNT;
-            chSysUnlock();
-
-            /*
-            *   End of optimized FFT
-            */
-
-            /*
-            *   Non optimized FFT
-            */
-
-            // //need to convert the float buffer into complex_float struct array
-            // for(uint16_t i = 0 ; i < (2*FFT_SIZE) ; i+=2){
-            //     temp_tab[i/2].real = bufferCmplxInput[i];
-            //     temp_tab[i/2].imag = bufferCmplxInput[i+1];
-            // }
-
-            // chSysLock();
-            // //reset the timer counter
-            // GPTD12.tim->CNT = 0;
-
-            // //do a non optimized FFT
-            // doFFT_c(FFT_SIZE, temp_tab);
-
-            // time_fft = GPTD12.tim->CNT;
-            // chSysUnlock();
-            
-            // //reconverts the result into a float buffer
-            // for(uint16_t i = 0 ; i < (2*FFT_SIZE) ; i+=2){
-            //     bufferCmplxInput[i] = temp_tab[i/2].real;
-            //     bufferCmplxInput[i+1] = temp_tab[i/2].imag;
-            // }
-
-            /*
-            *   End of non optimized FFT
-            */
-
-            chSysLock();
-            //reset the timer counter
-            GPTD12.tim->CNT = 0;
-
-            arm_cmplx_mag_f32(bufferCmplxInput, bufferOutput, FFT_SIZE);
-
-            time_mag = GPTD12.tim->CNT;
-            chSysUnlock();
 
             SendFloatToComputer((BaseSequentialStream *) &SD3, bufferOutput, FFT_SIZE);
-            //chprintf((BaseSequentialStream *) &SDU1, "time fft = %d us, time magnitude = %d us\n",time_fft, time_mag);
 
         }
 #endif  /* SEND_FROM_MIC */
