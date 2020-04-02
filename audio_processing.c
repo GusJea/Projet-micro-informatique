@@ -28,63 +28,72 @@ static float micBack_output[FFT_SIZE];
 #define MIN_VALUE_THRESHOLD	10000 
 
 #define MIN_FREQ		10	//we don't analyze before this index to not use resources for nothing
-#define FREQ_FORWARD	16	//250Hz
-#define FREQ_LEFT		19	//296Hz
-#define FREQ_RIGHT		23	//359HZ
-#define FREQ_BACKWARD	26	//406Hz
+#define FREQ_RIGHT		16	//250Hz
+#define FREQ_BACKWARD46	19	//296Hz
+#define FREQ_LENT		23	//359HZ
+#define FREQ_RAPIDE		26	//406Hz
 #define MAX_FREQ		30	//we don't analyze after this index to not use resources for nothing
 
-#define FREQ_FORWARD_L		(FREQ_FORWARD-1)
-#define FREQ_FORWARD_H		(FREQ_FORWARD+1)
-#define FREQ_LEFT_L			(FREQ_LEFT-1)
-#define FREQ_LEFT_H			(FREQ_LEFT+1)
+#define FREQ_LENT_L			(FREQ_LENT-1)
+#define FREQ_LENT_H			(FREQ_LENT+1)
+#define FREQ_RAPIDE_L		(FREQ_RAPIDE-1)
+#define FREQ_RAPIDE_H		(FREQ_RAPIDE+1)
 #define FREQ_RIGHT_L		(FREQ_RIGHT-1)
 #define FREQ_RIGHT_H		(FREQ_RIGHT+1)
 #define FREQ_BACKWARD_L		(FREQ_BACKWARD-1)
 #define FREQ_BACKWARD_H		(FREQ_BACKWARD+1)
 
+#define LEFT			0
+#define RIGHT			1
+#define DIR_FORWARD		2
+#define DIR_BACKWARD	3
+#define STOP			4
 /*
 *	Simple function used to detect the highest value in a buffer
 *	and to execute a motor command depending on it
 */
-void sound_remote(float* data){
+void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 	float max_norm = MIN_VALUE_THRESHOLD;
+	int direction = -1;
+	int old_norm_index = -1;
 	int16_t max_norm_index = -1; 
 
 	//search for the highest peak
 	for(uint16_t i = MIN_FREQ ; i <= MAX_FREQ ; i++){
-		if(data[i] > max_norm){
-			max_norm = data[i];
+		if(dataL[i] > max_norm)
+		{
+			max_norm = dataL[i];
 			max_norm_index = i;
+			direction = LEFT;
+		}
+		if(dataR[i] > max_norm)
+		{
+			max_norm = dataR[i];
+			max_norm_index = i;
+			direction = RIGHT;
+		}
+		if(dataF[i] > max_norm)
+		{
+			max_norm = dataF[i];
+			max_norm_index = i;
+			direction = DIR_FORWARD;
+		}
+		if(dataB[i] > max_norm)
+		{
+			max_norm = dataB[i];
+			max_norm_index = i;
+			direction = DIR_BACKWARD;
 		}
 	}
-
-	//go forward
-	if(max_norm_index >= FREQ_FORWARD_L && max_norm_index <= FREQ_FORWARD_H){
-		left_motor_set_speed(600);
-		right_motor_set_speed(600);
+	if(old_norm_index == -1 || old_norm_index == max_norm_index)
+	{
+		old_norm_index = max_norm_index;
+		commande_moteur(direction, max_norm_index);
 	}
-	//turn left
-	else if(max_norm_index >= FREQ_LEFT_L && max_norm_index <= FREQ_LEFT_H){
-		left_motor_set_speed(-600);
-		right_motor_set_speed(600);
-	}
-	//turn right
-	else if(max_norm_index >= FREQ_RIGHT_L && max_norm_index <= FREQ_RIGHT_H){
-		left_motor_set_speed(600);
-		right_motor_set_speed(-600);
-	}
-	//go backward
-	else if(max_norm_index >= FREQ_BACKWARD_L && max_norm_index <= FREQ_BACKWARD_H){
-		left_motor_set_speed(-600);
-		right_motor_set_speed(-600);
-	}
-	else{
-		left_motor_set_speed(0);
-		right_motor_set_speed(0);
-	}
-	
+	else
+		commande_moteur(STOP, max_norm_index);
 }
+
 
 /*
 *	Callback called when the demodulation of the four microphones is done.
@@ -165,7 +174,7 @@ void processAudioData(int16_t *data, uint16_t num_samples){
 		nb_samples = 0;
 		mustSend++;
 
-		sound_remote(micLeft_output);
+		sound_remote(micRight_output, micLeft_output, micBack_output, micFront_output);
 	}
 }
 
@@ -202,3 +211,91 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name){
 		return NULL;
 	}
 }
+
+void commande_moteur(int direction, int16_t max_norm_index)
+{
+	//go forward
+	if(direction == DIR_FORWARD)
+	{
+		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		{
+			left_motor_set_speed(600);
+			right_motor_set_speed(600);
+		}
+		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		{
+			left_motor_set_speed(2000);
+			right_motor_set_speed(2000);
+		}
+		else
+		{
+			left_motor_set_speed(0);
+			right_motor_set_speed(0);
+		}
+
+	}
+	//turn left
+	else if(direction == LEFT)
+	{
+		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		{
+			left_motor_set_speed(-600);
+			right_motor_set_speed(600);
+		}
+		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		{
+			left_motor_set_speed(-2000);
+			right_motor_set_speed(2000);
+		}
+		else
+		{
+			left_motor_set_speed(0);
+			right_motor_set_speed(0);
+		}
+	}
+	//turn right
+	else if(direction == RIGHT)
+	{
+		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		{
+			left_motor_set_speed(600);
+			right_motor_set_speed(-600);
+		}
+		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		{
+			left_motor_set_speed(2000);
+			right_motor_set_speed(-2000);
+		}
+		else
+		{
+			left_motor_set_speed(0);
+			right_motor_set_speed(0);
+		}
+	}
+	//go backward
+	else if(direction == DIR_BACKWARD)
+	{
+		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		{
+			left_motor_set_speed(-600);
+			right_motor_set_speed(-600);
+		}
+		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		{
+			left_motor_set_speed(-2000);
+			right_motor_set_speed(-2000);
+		}
+		else
+		{
+			left_motor_set_speed(0);
+			right_motor_set_speed(0);
+		}
+	}
+	else
+	{
+		left_motor_set_speed(0);
+		right_motor_set_speed(0);
+	}
+
+}
+
