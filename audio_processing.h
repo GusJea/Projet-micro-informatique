@@ -31,4 +31,14 @@ void motor_command(int16_t direction, int16_t max_norm_index);
 */
 float* get_audio_buffer_ptr(BUFFER_NAME_t name);
 
+/*
+ * Set the maximum intensity
+ */
+void set_intensity(float max_norm);
+
+/*
+ * Get the maximum intensity
+ */
+float get_intensity(void);
+
 #endif /* AUDIO_PROCESSING_H */

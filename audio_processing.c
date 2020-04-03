@@ -10,6 +10,7 @@
 #include <communications.h>
 #include <fft.h>
 #include <arm_math.h>
+#include <pi_regulator.h>
 
 //semaphore
 static BSEMAPHORE_DECL(sendToComputer_sem, TRUE);
@@ -45,6 +46,8 @@ static float micBack_output[FFT_SIZE];
 
 #define V_NULL			0
 #define V_SLOW			600
+
+static float global_norm = 0;
 
 /*
 *	Simple function used to detect the highest value in a buffer
@@ -86,10 +89,14 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 	if(old_norm_index == -1 || old_norm_index == max_norm_index)
 	{
 		old_norm_index = max_norm_index;
+		set_intensity(max_norm);
 		motor_command(direction, max_norm_index);
 	}
 	else
+	{
+		set_intensity(max_norm);
 		motor_command(DIR_STOP, max_norm_index);
+	}
 }
 
 
@@ -232,16 +239,19 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		{
 			left_motor_set_speed(V_SLOW);
 			right_motor_set_speed(V_SLOW);
+			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			left_motor_set_speed(2000);
-			right_motor_set_speed(2000);
+			//left_motor_set_speed(2000);
+			//right_motor_set_speed(2000);
+			set_state(STATE_PI);
 		}
 		else
 		{
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI);
 		}
 
 	}
@@ -252,16 +262,19 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		{
 			left_motor_set_speed(-V_SLOW);
 			right_motor_set_speed(V_SLOW);
+			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			left_motor_set_speed(-2000);
-			right_motor_set_speed(2000);
+			//left_motor_set_speed(-2000);
+			//right_motor_set_speed(2000);
+			set_state(STATE_PI);
 		}
 		else
 		{
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI);
 		}
 	}
 	//turn right
@@ -271,16 +284,19 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		{
 			left_motor_set_speed(V_SLOW);
 			right_motor_set_speed(-V_SLOW);
+			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			left_motor_set_speed(2000);
-			right_motor_set_speed(-2000);
+			//left_motor_set_speed(2000);
+			//right_motor_set_speed(-2000);
+			set_state(STATE_PI);
 		}
 		else
 		{
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI);
 		}
 	}
 	//go backward
@@ -290,23 +306,42 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		{
 			left_motor_set_speed(-V_SLOW);
 			right_motor_set_speed(-V_SLOW);
+			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			left_motor_set_speed(-2000);
-			right_motor_set_speed(-2000);
+			//left_motor_set_speed(-2000);
+			//right_motor_set_speed(-2000);
+			set_state(STATE_PI);
 		}
 		else
 		{
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI);
 		}
 	}
 	else
 	{
 		left_motor_set_speed(V_NULL);
 		right_motor_set_speed(V_NULL);
+		set_state(STATE_NPI);
 	}
 
 }
 
+/*
+*	Simple function to set the maximum intensity
+*/
+void set_intensity(float max_norm)
+{
+	global_norm = max_norm;
+}
+
+/*
+*	Simple function to get the maximum intensity
+*/
+float get_intensity()
+{
+	return global_norm;
+}
