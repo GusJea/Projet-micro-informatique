@@ -25,38 +25,36 @@ static float micRight_output[FFT_SIZE];
 static float micFront_output[FFT_SIZE];
 static float micBack_output[FFT_SIZE];
 
-#define MIN_VALUE_THRESHOLD	10000 
+#define MIN_VALUE_THRESHOLD	10000
 
 #define MIN_FREQ		10	//we don't analyze before this index to not use resources for nothing
-#define FREQ_RIGHT		16	//250Hz
-#define FREQ_BACKWARD46	19	//296Hz
-#define FREQ_LENT		23	//359HZ
-#define FREQ_RAPIDE		26	//406Hz
-#define MAX_FREQ		30	//we don't analyze after this index to not use resources for nothing
+#define FREQ_SLOW		30	//467HZ
+#define FREQ_FAST		50	//779Hz
+#define MAX_FREQ		60	//we don't analyze after this index to not use resources for nothing
 
-#define FREQ_LENT_L			(FREQ_LENT-1)
-#define FREQ_LENT_H			(FREQ_LENT+1)
-#define FREQ_RAPIDE_L		(FREQ_RAPIDE-1)
-#define FREQ_RAPIDE_H		(FREQ_RAPIDE+1)
-#define FREQ_RIGHT_L		(FREQ_RIGHT-1)
-#define FREQ_RIGHT_H		(FREQ_RIGHT+1)
-#define FREQ_BACKWARD_L		(FREQ_BACKWARD-1)
-#define FREQ_BACKWARD_H		(FREQ_BACKWARD+1)
+#define FREQ_SLOW_L		(FREQ_SLOW-1)
+#define FREQ_SLOW_H		(FREQ_SLOW+1)
+#define FREQ_FAST_L		(FREQ_FAST-1)
+#define FREQ_FAST_H		(FREQ_FAST+1)
 
-#define LEFT			0
-#define RIGHT			1
+#define DIR_LEFT		0
+#define DIR_RIGHT		1
 #define DIR_FORWARD		2
 #define DIR_BACKWARD	3
-#define STOP			4
+#define DIR_STOP		4
+
+#define V_NULL			0
+#define V_SLOW			600
+
 /*
 *	Simple function used to detect the highest value in a buffer
 *	and to execute a motor command depending on it
 */
 void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 	float max_norm = MIN_VALUE_THRESHOLD;
-	int direction = -1;
-	int old_norm_index = -1;
-	int16_t max_norm_index = -1; 
+	int16_t direction = -1;
+	int16_t old_norm_index = -1;
+	int16_t max_norm_index = -1;
 
 	//search for the highest peak
 	for(uint16_t i = MIN_FREQ ; i <= MAX_FREQ ; i++){
@@ -64,13 +62,13 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 		{
 			max_norm = dataL[i];
 			max_norm_index = i;
-			direction = LEFT;
+			direction = DIR_LEFT;
 		}
 		if(dataR[i] > max_norm)
 		{
 			max_norm = dataR[i];
 			max_norm_index = i;
-			direction = RIGHT;
+			direction = DIR_RIGHT;
 		}
 		if(dataF[i] > max_norm)
 		{
@@ -88,10 +86,10 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 	if(old_norm_index == -1 || old_norm_index == max_norm_index)
 	{
 		old_norm_index = max_norm_index;
-		commande_moteur(direction, max_norm_index);
+		motor_command(direction, max_norm_index);
 	}
 	else
-		commande_moteur(STOP, max_norm_index);
+		motor_command(DIR_STOP, max_norm_index);
 }
 
 
@@ -212,89 +210,102 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name){
 	}
 }
 
-void commande_moteur(int direction, int16_t max_norm_index)
+/*
+*	Send the new speed of each motor depending of the direction and the frequency
+*	of the highest intensity of the sound detected.
+*
+*	params :
+*	int direction			Tells the direction of the robot:
+*							-> 0:	go left
+*							-> 1:	go right
+*							-> 2:	go forward
+*							-> 3:	go backward
+*							-> 4:	stop the motors
+*	uint16_t max_norm_index	Tells the frequency of the sound captured so the speed can depend of it.
+*/
+void motor_command(int16_t direction, int16_t max_norm_index)
 {
 	//go forward
 	if(direction == DIR_FORWARD)
 	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
-			left_motor_set_speed(600);
-			right_motor_set_speed(600);
+			left_motor_set_speed(V_SLOW);
+			right_motor_set_speed(V_SLOW);
 		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			left_motor_set_speed(2000);
 			right_motor_set_speed(2000);
 		}
 		else
 		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
+			left_motor_set_speed(V_NULL);
+			right_motor_set_speed(V_NULL);
 		}
 
 	}
 	//turn left
-	else if(direction == LEFT)
+	else if(direction == DIR_LEFT)
 	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
-			left_motor_set_speed(-600);
-			right_motor_set_speed(600);
+			left_motor_set_speed(-V_SLOW);
+			right_motor_set_speed(V_SLOW);
 		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			left_motor_set_speed(-2000);
 			right_motor_set_speed(2000);
 		}
 		else
 		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
+			left_motor_set_speed(V_NULL);
+			right_motor_set_speed(V_NULL);
 		}
 	}
 	//turn right
-	else if(direction == RIGHT)
+	else if(direction == DIR_RIGHT)
 	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
-			left_motor_set_speed(600);
-			right_motor_set_speed(-600);
+			left_motor_set_speed(V_SLOW);
+			right_motor_set_speed(-V_SLOW);
 		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			left_motor_set_speed(2000);
 			right_motor_set_speed(-2000);
 		}
 		else
 		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
+			left_motor_set_speed(V_NULL);
+			right_motor_set_speed(V_NULL);
 		}
 	}
 	//go backward
 	else if(direction == DIR_BACKWARD)
 	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
+		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
-			left_motor_set_speed(-600);
-			right_motor_set_speed(-600);
+			left_motor_set_speed(-V_SLOW);
+			right_motor_set_speed(-V_SLOW);
 		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
+		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			left_motor_set_speed(-2000);
 			right_motor_set_speed(-2000);
 		}
 		else
 		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
+			left_motor_set_speed(V_NULL);
+			right_motor_set_speed(V_NULL);
 		}
 	}
 	else
 	{
-		left_motor_set_speed(0);
-		right_motor_set_speed(0);
+		left_motor_set_speed(V_NULL);
+		right_motor_set_speed(V_NULL);
 	}
 
 }

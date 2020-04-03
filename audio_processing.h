@@ -25,7 +25,7 @@ void processAudioData(int16_t *data, uint16_t num_samples);
 */
 void wait_send_to_computer(void);
 
-void commande_moteur(int direction, int16_t max_norm_index);
+void motor_command(int16_t direction, int16_t max_norm_index);
 /*
 *	Returns the pointer to the BUFFER_NAME_t buffer asked
 */
