@@ -16,6 +16,9 @@
 #define MAX_SUM_ERROR	1000000.
 #define ERROR_THRESHOLD	10000.0
 
+static  uint8_t pi_state = 0;
+static  uint8_t pi_dir = 0;
+
 //simple PI regulator implementation
 int16_t pi_regulator(float intensity, float goal){
 
@@ -57,8 +60,6 @@ static THD_FUNCTION(PiRegulator, arg) {
 
     int16_t speed = 0;
     //int16_t speed_correction = 0;
-    uint8_t pi_state = 0;
-    uint8_t pi_dir = 0;
 
     while(1){
         time = chVTGetSystemTime();
