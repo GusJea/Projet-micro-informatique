@@ -16,8 +16,6 @@
 #define MAX_SUM_ERROR	1000000.
 #define ERROR_THRESHOLD	10000.0
 
-static uint8_t global_state = 0;
-
 //simple PI regulator implementation
 int16_t pi_regulator(float intensity, float goal){
 
@@ -59,13 +57,15 @@ static THD_FUNCTION(PiRegulator, arg) {
 
     int16_t speed = 0;
     //int16_t speed_correction = 0;
+    uint8_t pi_state = 0;
+    uint8_t pi_dir = 0;
 
     while(1){
         time = chVTGetSystemTime();
-        if(global_state)
+        if(pi_state)
         {
         	//computes the speed to give to the motors
-        	//distance_cm is modified by the image processing thread
+        	//the intensity is modified by the sound processing thread
         	speed = pi_regulator(get_intensity(), INTENSITY_MAX);
         	//computes a correction factor to let the robot rotate to be in front of the line
         	//speed_correction = (get_line_position() - (IMAGE_BUFFER_SIZE/2));
@@ -76,8 +76,25 @@ static THD_FUNCTION(PiRegulator, arg) {
         	//}
 
         	//applies the speed from the PI regulator and the correction for the rotation
-        	right_motor_set_speed(speed /*- ROTATION_COEFF * speed_correction*/);
-        	left_motor_set_speed(speed /*+ ROTATION_COEFF * speed_correction*/);
+        	switch(pi_dir)
+        	{
+        		case DIR_LEFT:
+                	right_motor_set_speed(speed);
+                	left_motor_set_speed(-speed);
+        			break;
+        		case DIR_RIGHT:
+                	right_motor_set_speed(-speed);
+                	left_motor_set_speed(speed);
+        			break;
+        		case DIR_FORWARD:
+                	right_motor_set_speed(speed);
+                	left_motor_set_speed(speed);
+        			break;
+        		case DIR_BACKWARD:
+                	right_motor_set_speed(-speed);
+                	left_motor_set_speed(-speed);
+        			break;
+        	}
         }
        	//100Hz
        	chThdSleepUntilWindowed(time, time + MS2ST(10));
@@ -89,11 +106,18 @@ void pi_regulator_start(void){
 }
 
 /*
- * Set the state to know if the pi regulator is active or not
+ * Set the state to know if the pi regulator is active or not and the direction
+ * state:
  * -> 0: no PI
  * -> 1: PI
+ * direction:
+ * -> 0: left
+ * -> 1: right
+ * -> 2: forward
+ * -> 3: backward
  */
-void set_state(int state)
+void set_state(int state, int direction)
 {
-	global_state=state;
+	pi_state=state;
+	pi_dir=direction;
 }

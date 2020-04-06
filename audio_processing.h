@@ -3,6 +3,11 @@
 
 
 #define FFT_SIZE 	1024
+#define DIR_LEFT		0
+#define DIR_RIGHT		1
+#define DIR_FORWARD		2
+#define DIR_BACKWARD	3
+#define DIR_STOP		4
 
 typedef enum {
 	//2 times FFT_SIZE because these arrays contain complex numbers (real + imaginary)

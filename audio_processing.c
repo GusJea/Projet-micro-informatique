@@ -38,12 +38,6 @@ static float micBack_output[FFT_SIZE];
 #define FREQ_FAST_L		(FREQ_FAST-1)
 #define FREQ_FAST_H		(FREQ_FAST+1)
 
-#define DIR_LEFT		0
-#define DIR_RIGHT		1
-#define DIR_FORWARD		2
-#define DIR_BACKWARD	3
-#define DIR_STOP		4
-
 #define V_NULL			0
 #define V_SLOW			600
 
@@ -237,21 +231,21 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 	{
 		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
+			set_state(STATE_NPI, DIR_FORWARD);
 			left_motor_set_speed(V_SLOW);
 			right_motor_set_speed(V_SLOW);
-			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			//left_motor_set_speed(2000);
 			//right_motor_set_speed(2000);
-			set_state(STATE_PI);
+			set_state(STATE_PI, DIR_FORWARD);
 		}
 		else
 		{
+			set_state(STATE_NPI, DIR_FORWARD);
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
-			set_state(STATE_NPI);
 		}
 
 	}
@@ -260,21 +254,21 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 	{
 		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
+			set_state(STATE_NPI, DIR_LEFT);
 			left_motor_set_speed(-V_SLOW);
 			right_motor_set_speed(V_SLOW);
-			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			//left_motor_set_speed(-2000);
 			//right_motor_set_speed(2000);
-			set_state(STATE_PI);
+			set_state(STATE_PI, DIR_LEFT);
 		}
 		else
 		{
+			set_state(STATE_NPI, DIR_LEFT);
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
-			set_state(STATE_NPI);
 		}
 	}
 	//turn right
@@ -282,21 +276,21 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 	{
 		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
+			set_state(STATE_NPI, DIR_RIGHT);
 			left_motor_set_speed(V_SLOW);
 			right_motor_set_speed(-V_SLOW);
-			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			//left_motor_set_speed(2000);
 			//right_motor_set_speed(-2000);
-			set_state(STATE_PI);
+			set_state(STATE_PI, DIR_RIGHT);
 		}
 		else
 		{
+			set_state(STATE_NPI, DIR_RIGHT);
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
-			set_state(STATE_NPI);
 		}
 	}
 	//go backward
@@ -304,30 +298,29 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 	{
 		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
+			set_state(STATE_NPI, DIR_BACKWARD);
 			left_motor_set_speed(-V_SLOW);
 			right_motor_set_speed(-V_SLOW);
-			set_state(STATE_NPI);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
 			//left_motor_set_speed(-2000);
 			//right_motor_set_speed(-2000);
-			set_state(STATE_PI);
+			set_state(STATE_PI, DIR_BACKWARD);
 		}
 		else
 		{
+			set_state(STATE_NPI, DIR_BACKWARD);
 			left_motor_set_speed(V_NULL);
 			right_motor_set_speed(V_NULL);
-			set_state(STATE_NPI);
 		}
 	}
 	else
 	{
+		set_state(STATE_NPI, DIR_BACKWARD);
 		left_motor_set_speed(V_NULL);
 		right_motor_set_speed(V_NULL);
-		set_state(STATE_NPI);
 	}
-
 }
 
 /*
