@@ -26,18 +26,10 @@ static float micRight_output[FFT_SIZE];
 static float micFront_output[FFT_SIZE];
 static float micBack_output[FFT_SIZE];
 
-#define MIN_VALUE_THRESHOLD	10000
+#define MIN_VALUE_THRESHOLD	30000
 
-//#define MIN_FREQ		10	//we don't analyze before this index to not use resources for nothing
 #define FREQ_SLOW		30	//467HZ
 #define FREQ_FAST		50	//779Hz
-//#define MAX_FREQ		60	//we don't analyze after this index to not use resources for nothing
-
-/*#define FREQ_SLOW_L		(FREQ_SLOW-1)
-#define FREQ_SLOW_H		(FREQ_SLOW+1)
-#define FREQ_FAST_L		(FREQ_FAST-1)
-#define FREQ_FAST_H		(FREQ_FAST+1)*/
-
 
 static float global_norm = 0;
 
@@ -81,46 +73,6 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 	}
 	set_intensity(max_norm);
 	motor_command(direction, max_norm_index);
-
-
-	//search for the highest peak
-	/*for(uint16_t i = MIN_FREQ ; i <= MAX_FREQ ; i++){
-		if(dataL[i] > max_norm)
-		{
-			max_norm = dataL[i];
-			max_norm_index = i;
-			direction = DIR_LEFT;
-		}
-		if(dataR[i] > max_norm)
-		{
-			max_norm = dataR[i];
-			max_norm_index = i;
-			direction = DIR_RIGHT;
-		}
-		if(dataF[i] > max_norm)
-		{
-			max_norm = dataF[i];
-			max_norm_index = i;
-			direction = DIR_FORWARD;
-		}
-		if(dataB[i] > max_norm)
-		{
-			max_norm = dataB[i];
-			max_norm_index = i;
-			direction = DIR_BACKWARD;
-		}
-	}
-	if(old_norm_index == -1 || old_norm_index == max_norm_index)
-	{
-		old_norm_index = max_norm_index;
-		set_intensity(max_norm);
-		motor_command(direction, max_norm_index);
-	}
-	else
-	{
-		set_intensity(max_norm);
-		motor_command(DIR_STOP, max_norm_index);
-	}*/
 }
 
 /*
@@ -294,74 +246,6 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 				set_state(STATE_PI, DIR_STOP);
 			break;
 	}
-	/*if(max_norm_index == FREQ_SLOW)
-	{
-		if(max_norm_index == FREQ_SLOW)
-		{
-			set_state(STATE_NPI, DIR_FORWARD);
-		}
-		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-		{
-			set_state(STATE_PI, DIR_FORWARD);
-		}
-		else
-		{
-			set_state(STATE_NPI, DIR_STOP);
-		}
-
-	}
-	//turn left
-	else if(direction == DIR_LEFT)
-	{
-		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
-		{
-			set_state(STATE_NPI, DIR_LEFT);
-		}
-		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-		{
-			set_state(STATE_PI, DIR_LEFT);
-		}
-		else
-		{
-			set_state(STATE_NPI, DIR_STOP);
-		}
-	}
-	//turn right
-	else if(direction == DIR_RIGHT)
-	{
-		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
-		{
-			set_state(STATE_NPI, DIR_RIGHT);
-		}
-		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-		{
-			set_state(STATE_PI, DIR_RIGHT);
-		}
-		else
-		{
-			set_state(STATE_NPI, DIR_STOP);
-		}
-	}
-	//go backward
-	else if(direction == DIR_BACKWARD)
-	{
-		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
-		{
-			set_state(STATE_NPI, DIR_BACKWARD);
-		}
-		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-		{
-			set_state(STATE_PI, DIR_BACKWARD);
-		}
-		else
-		{
-			set_state(STATE_NPI, DIR_STOP);
-		}
-	}
-	else
-	{
-		set_state(STATE_NPI, DIR_STOP);
-	}*/
 }
 
 /*

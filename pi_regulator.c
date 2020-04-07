@@ -69,7 +69,12 @@ static THD_FUNCTION(PiRegulator, arg) {
         if(pi_state)
         	speed = pi_regulator(get_intensity(), INTENSITY_MAX);
         else
-        	speed = V_SLOW;
+        {
+        	if(pi_dir == DIR_STOP)
+        		speed = V_NULL;
+        	else
+        		speed = V_SLOW;
+        }
         	//computes a correction factor to let the robot rotate to be in front of the line
         	//speed_correction = (get_line_position() - (IMAGE_BUFFER_SIZE/2));
 
