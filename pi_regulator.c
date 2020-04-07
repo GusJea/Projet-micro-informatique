@@ -22,8 +22,8 @@
  * -> 0: PI is not used
  * -> 1: PI is used
  */
-static  uint8_t pi_state = 0;
-static  uint8_t pi_dir = 0;
+static  uint8_t pi_state = STATE_NPI;
+static  uint8_t pi_dir = DIR_STOP;
 
 //simple PI regulator implementation
 int16_t pi_regulator(float intensity, float goal){
@@ -66,17 +66,13 @@ static THD_FUNCTION(PiRegulator, arg) {
         time = chVTGetSystemTime();
        	//computes the speed to give to the motors
        	//the intensity is modified by the sound processing thread
-        if(pi_state)
+        if(pi_state == STATE_PI)
         	speed = pi_regulator(get_intensity(), INTENSITY_MAX);
         else
-        {
-        	if(pi_dir == DIR_STOP)
-        		speed = V_NULL;
-        	else
-        		speed = V_SLOW;
-        }
-        	//computes a correction factor to let the robot rotate to be in front of the line
-        	//speed_correction = (get_line_position() - (IMAGE_BUFFER_SIZE/2));
+       		speed = V_SLOW;
+
+       	//computes a correction factor to let the robot rotate to be in front of the line
+       	//speed_correction = (get_line_position() - (IMAGE_BUFFER_SIZE/2));
 
         	//if the line is nearly in front of the camera, don't rotate
         	//if(abs(speed_correction) < ROTATION_THRESHOLD){
