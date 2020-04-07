@@ -4,18 +4,24 @@
 #include <usbcfg.h>
 #include <chprintf.h>
 
-
 #include <main.h>
 #include <motors.h>
 #include <pi_regulator.h>
 #include <audio_processing.h>
 
-#define KP				0.5
+#define KP				0.05
 #define KI				0.5
-#define INTENSITY_MAX	185000.0
-#define MAX_SUM_ERROR	1000000.
+#define INTENSITY_MAX	190000.0
+#define MAX_SUM_ERROR	100.
 #define ERROR_THRESHOLD	10000.0
 
+#define V_SLOW			600
+#define V_NULL			0
+
+/* pi_state determine if the pi_regulator is used or not. It depends of the frequency.
+ * -> 0: PI is not used
+ * -> 1: PI is used
+ */
 static  uint8_t pi_state = 0;
 static  uint8_t pi_dir = 0;
 
@@ -24,9 +30,7 @@ int16_t pi_regulator(float intensity, float goal){
 
 	float error = 0;
 	float speed = 0;
-
 	static float sum_error = 0;
-
 	error = goal - intensity;
 
 	//disables the PI regulator if the error is to small
@@ -35,7 +39,6 @@ int16_t pi_regulator(float intensity, float goal){
 	if(fabs(error) < ERROR_THRESHOLD){
 		return 0;
 	}
-
 	sum_error += error;
 
 	//we set a maximum and a minimum for the sum to avoid an uncontrolled growth
@@ -44,9 +47,7 @@ int16_t pi_regulator(float intensity, float goal){
 	}else if(sum_error < -MAX_SUM_ERROR){
 		sum_error = -MAX_SUM_ERROR;
 	}
-
-	speed = KP * error + KI * sum_error;
-
+	speed = KP * error /*+ KI * sum_error*/;
     return (int16_t)speed;
 }
 
@@ -63,11 +64,12 @@ static THD_FUNCTION(PiRegulator, arg) {
 
     while(1){
         time = chVTGetSystemTime();
+       	//computes the speed to give to the motors
+       	//the intensity is modified by the sound processing thread
         if(pi_state)
-        {
-        	//computes the speed to give to the motors
-        	//the intensity is modified by the sound processing thread
         	speed = pi_regulator(get_intensity(), INTENSITY_MAX);
+        else
+        	speed = V_SLOW;
         	//computes a correction factor to let the robot rotate to be in front of the line
         	//speed_correction = (get_line_position() - (IMAGE_BUFFER_SIZE/2));
 
@@ -77,28 +79,31 @@ static THD_FUNCTION(PiRegulator, arg) {
         	//}
 
         	//applies the speed from the PI regulator and the correction for the rotation
-        	switch(pi_dir)
-        	{
-        		case DIR_LEFT:
-                	right_motor_set_speed(speed);
-                	left_motor_set_speed(-speed);
-        			break;
-        		case DIR_RIGHT:
-                	right_motor_set_speed(-speed);
-                	left_motor_set_speed(speed);
-        			break;
-        		case DIR_FORWARD:
-                	right_motor_set_speed(speed);
-                	left_motor_set_speed(speed);
-        			break;
-        		case DIR_BACKWARD:
-                	right_motor_set_speed(-speed);
-                	left_motor_set_speed(-speed);
-        			break;
-        	}
+        switch(pi_dir)
+        {
+        	case DIR_LEFT:
+               	right_motor_set_speed(speed);
+               	left_motor_set_speed(-speed);
+        		break;
+        	case DIR_RIGHT:
+               	right_motor_set_speed(-speed);
+               	left_motor_set_speed(speed);
+        		break;
+        	case DIR_FORWARD:
+               	right_motor_set_speed(speed);
+               	left_motor_set_speed(speed);
+        		break;
+        	case DIR_BACKWARD:
+               	right_motor_set_speed(-speed);
+               	left_motor_set_speed(-speed);
+        		break;
+        	case DIR_STOP:
+        		right_motor_set_speed(V_NULL);
+            	left_motor_set_speed(V_NULL);
+        		break;
         }
-       	//100Hz
-       	chThdSleepUntilWindowed(time, time + MS2ST(10));
+       	//10kHz
+       	chThdSleepUntilWindowed(time, time + MS2ST(0.1));
     }
 }
 

@@ -28,18 +28,16 @@ static float micBack_output[FFT_SIZE];
 
 #define MIN_VALUE_THRESHOLD	10000
 
-#define MIN_FREQ		10	//we don't analyze before this index to not use resources for nothing
+//#define MIN_FREQ		10	//we don't analyze before this index to not use resources for nothing
 #define FREQ_SLOW		30	//467HZ
 #define FREQ_FAST		50	//779Hz
-#define MAX_FREQ		60	//we don't analyze after this index to not use resources for nothing
+//#define MAX_FREQ		60	//we don't analyze after this index to not use resources for nothing
 
-#define FREQ_SLOW_L		(FREQ_SLOW-1)
+/*#define FREQ_SLOW_L		(FREQ_SLOW-1)
 #define FREQ_SLOW_H		(FREQ_SLOW+1)
 #define FREQ_FAST_L		(FREQ_FAST-1)
-#define FREQ_FAST_H		(FREQ_FAST+1)
+#define FREQ_FAST_H		(FREQ_FAST+1)*/
 
-#define V_NULL			0
-#define V_SLOW			600
 
 static float global_norm = 0;
 
@@ -50,11 +48,43 @@ static float global_norm = 0;
 void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 	float max_norm = MIN_VALUE_THRESHOLD;
 	int16_t direction = -1;
-	int16_t old_norm_index = -1;
+	//int16_t old_norm_index = -1;
 	int16_t max_norm_index = -1;
 
+	//Search for the maximum sound intensity between the 2 frequencies we want to look at
+	for(int i=0; i<1; i++)
+	{
+		if(dataL[FREQ_SLOW+i*20] > max_norm)
+		{
+			max_norm = dataL[FREQ_SLOW+i*20];
+			max_norm_index = (FREQ_SLOW+i*20);
+			direction = DIR_LEFT;
+		}
+		else if(dataR[FREQ_SLOW+i*20] > max_norm)
+		{
+			max_norm = dataR[FREQ_SLOW+i*20];
+			max_norm_index = (FREQ_SLOW+i*20);
+			direction = DIR_RIGHT;
+		}
+		else if(dataF[FREQ_SLOW+i*20] > max_norm)
+		{
+			max_norm = dataF[FREQ_SLOW+i*20];
+			max_norm_index = (FREQ_SLOW+i*20);
+			direction = DIR_FORWARD;
+		}
+		else if(dataB[FREQ_SLOW+i*20] > max_norm)
+		{
+			max_norm = dataB[FREQ_SLOW+i*20];
+			max_norm_index = (FREQ_SLOW+i*20);
+			direction = DIR_BACKWARD;
+		}
+	}
+	set_intensity(max_norm);
+	motor_command(direction, max_norm_index);
+
+
 	//search for the highest peak
-	for(uint16_t i = MIN_FREQ ; i <= MAX_FREQ ; i++){
+	/*for(uint16_t i = MIN_FREQ ; i <= MAX_FREQ ; i++){
 		if(dataL[i] > max_norm)
 		{
 			max_norm = dataL[i];
@@ -90,9 +120,8 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 	{
 		set_intensity(max_norm);
 		motor_command(DIR_STOP, max_norm_index);
-	}
+	}*/
 }
-
 
 /*
 *	Callback called when the demodulation of the four microphones is done.
@@ -114,7 +143,7 @@ void processAudioData(int16_t *data, uint16_t num_samples){
 	*/
 
 	static uint16_t nb_samples = 0;
-	static uint8_t mustSend = 0;
+	//static uint8_t mustSend = 0;
 
 	//loop to fill the buffers
 	for(uint16_t i = 0 ; i < num_samples ; i+=4){
@@ -165,13 +194,13 @@ void processAudioData(int16_t *data, uint16_t num_samples){
 
 		//sends only one FFT result over 10 for 1 mic to not flood the computer
 		//sends to UART3
-		if(mustSend > 8){
+		/*if(mustSend > 8){
 			//signals to send the result to the computer
 			chBSemSignal(&sendToComputer_sem);
 			mustSend = 0;
-		}
+		}*/
 		nb_samples = 0;
-		mustSend++;
+		//mustSend++;
 
 		sound_remote(micRight_output, micLeft_output, micBack_output, micFront_output);
 	}
@@ -226,26 +255,58 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name){
 */
 void motor_command(int16_t direction, int16_t max_norm_index)
 {
-	//go forward
-	if(direction == DIR_FORWARD)
+	//check the direction
+	switch(direction)
 	{
-		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
+		case DIR_LEFT:
+			//check if the PI is used or not
+			if(max_norm_index == FREQ_SLOW)
+				set_state(STATE_NPI, DIR_LEFT);
+			else if(max_norm_index == FREQ_FAST)
+				set_state(STATE_PI, DIR_LEFT);
+			break;
+		case DIR_RIGHT:
+			//check if the PI is used or not
+			if(max_norm_index == FREQ_SLOW)
+				set_state(STATE_NPI, DIR_RIGHT);
+			else if(max_norm_index == FREQ_FAST)
+				set_state(STATE_PI, DIR_RIGHT);
+			break;
+		case DIR_FORWARD:
+			//check if the PI is used or not
+			if(max_norm_index == FREQ_SLOW)
+				set_state(STATE_NPI, DIR_FORWARD);
+			else if(max_norm_index == FREQ_FAST)
+				set_state(STATE_PI, DIR_FORWARD);
+			break;
+		case DIR_BACKWARD:
+			//check if the PI is used or not
+			if(max_norm_index == FREQ_SLOW)
+				set_state(STATE_NPI, DIR_BACKWARD);
+			else if(max_norm_index == FREQ_FAST)
+				set_state(STATE_PI, DIR_BACKWARD);
+			break;
+		case DIR_STOP:
+			//check if the PI is used or not
+			if(max_norm_index == FREQ_SLOW)
+				set_state(STATE_NPI, DIR_STOP);
+			else if(max_norm_index == FREQ_FAST)
+				set_state(STATE_PI, DIR_STOP);
+			break;
+	}
+	/*if(max_norm_index == FREQ_SLOW)
+	{
+		if(max_norm_index == FREQ_SLOW)
 		{
 			set_state(STATE_NPI, DIR_FORWARD);
-			left_motor_set_speed(V_SLOW);
-			right_motor_set_speed(V_SLOW);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			//left_motor_set_speed(2000);
-			//right_motor_set_speed(2000);
 			set_state(STATE_PI, DIR_FORWARD);
 		}
 		else
 		{
-			set_state(STATE_NPI, DIR_FORWARD);
-			left_motor_set_speed(V_NULL);
-			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI, DIR_STOP);
 		}
 
 	}
@@ -255,20 +316,14 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
 			set_state(STATE_NPI, DIR_LEFT);
-			left_motor_set_speed(-V_SLOW);
-			right_motor_set_speed(V_SLOW);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			//left_motor_set_speed(-2000);
-			//right_motor_set_speed(2000);
 			set_state(STATE_PI, DIR_LEFT);
 		}
 		else
 		{
-			set_state(STATE_NPI, DIR_LEFT);
-			left_motor_set_speed(V_NULL);
-			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI, DIR_STOP);
 		}
 	}
 	//turn right
@@ -277,20 +332,14 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
 			set_state(STATE_NPI, DIR_RIGHT);
-			left_motor_set_speed(V_SLOW);
-			right_motor_set_speed(-V_SLOW);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			//left_motor_set_speed(2000);
-			//right_motor_set_speed(-2000);
 			set_state(STATE_PI, DIR_RIGHT);
 		}
 		else
 		{
-			set_state(STATE_NPI, DIR_RIGHT);
-			left_motor_set_speed(V_NULL);
-			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI, DIR_STOP);
 		}
 	}
 	//go backward
@@ -299,28 +348,20 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 		{
 			set_state(STATE_NPI, DIR_BACKWARD);
-			left_motor_set_speed(-V_SLOW);
-			right_motor_set_speed(-V_SLOW);
 		}
 		else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 		{
-			//left_motor_set_speed(-2000);
-			//right_motor_set_speed(-2000);
 			set_state(STATE_PI, DIR_BACKWARD);
 		}
 		else
 		{
-			set_state(STATE_NPI, DIR_BACKWARD);
-			left_motor_set_speed(V_NULL);
-			right_motor_set_speed(V_NULL);
+			set_state(STATE_NPI, DIR_STOP);
 		}
 	}
 	else
 	{
-		set_state(STATE_NPI, DIR_BACKWARD);
-		left_motor_set_speed(V_NULL);
-		right_motor_set_speed(V_NULL);
-	}
+		set_state(STATE_NPI, DIR_STOP);
+	}*/
 }
 
 /*
