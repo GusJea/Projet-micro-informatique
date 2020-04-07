@@ -12,6 +12,9 @@ GLOBAL_PATH = ../../lib/e-puck2_main-processor
 CSRC += ./main.c \
 		./audio_processing.c \
 		./communications.c \
+		./obstacle.c \
+		./pi_regulator.c \
+		./utilities.c \
 		./fft.c \
 
 #Header folders to include

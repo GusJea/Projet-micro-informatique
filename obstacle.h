@@ -15,7 +15,15 @@ void sensor_init(void);
 uint16_t obstacle_length_left(void);
 uint16_t obstacle_length_right(void);
 
+
 //défini dans quelle direction aller
-uint16_t direction_choose(uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r);
+uint8_t direction_choose(uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r);
+
+
+//commande une tour de 90 degrés dans la direction a suivre puis evite l'obstacle
+void motor_command_obs_dodge(uint8_t direction, uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r);
+
+
+void motor_turn_obs(uint16_t pos_right, uint16_t pos_left);
 
 #endif /* OBSTACLE_H_ */

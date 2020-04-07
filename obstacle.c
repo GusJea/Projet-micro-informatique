@@ -16,12 +16,13 @@ CONDVAR_DECL(bus_condvar);*/
 #define STEP_ADD_TOUR	5
 #define	DIST_STOP		10
 #define IR_NUMBER		7 // de 0 a 7 donc 8 sensor
-#define TAN(x)	(float)tan(x)
-#define SIN(x)	(float)sin(x)
-#define ACOS(x)	(float)acos(x)
-#define S_LEFT	1
-#define	S_RIGHT 2
-#define EQUAL	3
+#define TAN(x)			(float)tan(x)
+#define SIN(x)			(float)sin(x)
+#define ACOS(x)			(float)acos(x)
+#define S_LEFT			1
+#define	S_RIGHT 		2
+#define EQUAL			3
+
 
 void sensor_init()
 {
@@ -43,7 +44,7 @@ static THD_FUNCTION(DetectObjet, arg)
 	while (1)
 	{
 		scan_obstacle();
-
+		//chThdSleepMilliseconds(10);
 	}
 
 }
@@ -86,40 +87,38 @@ void detect_obstacle()
 }
 
 //mesure et décide de quel côtés de l'obstacle aller avec le TOF
+
 void scan_obstacle()
 {
 	uint16_t distance_mm = 80;
 	uint16_t ob_leng_mm_l = 0;
-	//uint16_t ob_leng_mm_r = 0;
+	uint16_t ob_leng_mm_r = 0;
+	uint8_t direction =0;
+
 	distance_mm = VL53L0X_get_dist_mm();
-	if(distance_mm <= 70 )
+	if(distance_mm <= 70)
 	{
 
-		//left_motor_set_speed(-600);
-		//right_motor_set_speed(-600);
-
+		ob_leng_mm_r = obstacle_length_right();
 		ob_leng_mm_l = obstacle_length_left();
-		//ob_leng_mm_r = obstacle_length_rightt();
-		//direction_choose(ob_leng_mm_l, ob_leng_mm_r);
+		direction = direction_choose(ob_leng_mm_l, ob_leng_mm_r);
+		motor_command_obs_dodge(direction, ob_leng_mm_l, ob_leng_mm_r);
 
 	}
 }
 
-//en travaux
-uint16_t obstacle_length_left()
-{
-	uint16_t ob_leng_TOF_mm = 0;
-	uint16_t ob_leng_mm = 0;
-	uint16_t left_return =0;
-	uint16_t right_return =0;
 
-	int stop = 0;
+uint16_t obstacle_length_right()
+{
+	float ob_leng_TOF_mm = 0.0;
+	float ob_leng_mm = 0.0;
+
+	uint16_t return_value[2] = {0}; //left 0 right 1
+
+
+	uint8_t stop = 0;
 	for(uint16_t i = 1; i<90; i++)
 	{
-
-		//motor_angle(0);
-		//sensé faire bouger de 1 degrés a chaque appel...
-
 		right_motor_set_pos(0);
 		left_motor_set_pos(0);
 		left_motor_set_speed(0);
@@ -132,31 +131,32 @@ uint16_t obstacle_length_left()
 			{
 				left_motor_set_speed(0);
 				right_motor_set_speed(0);
-				left_return += left_motor_get_pos();
-				right_return += right_motor_get_pos();
+				return_value[0] += left_motor_get_pos();
+				return_value[1] += right_motor_get_pos();
 				stop=1;
 			}
 			else
-				{
+			{
 				left_motor_set_speed(326);
 				right_motor_set_speed(-326);
-				}
+			}
 
 		}
-		stop =0;
-		/*ob_leng_TOF_mm = (uint16_t) (sin(i)*((float)(VL53L0X_get_dist_mm())));
-		ob_leng_mm = (uint16_t) (tan(i)*70);
 
-		if(ob_leng_mm != ob_leng_TOF_mm)
+		stop =0;
+		ob_leng_TOF_mm = ((float)sin(i*3.141592/180))*((float)(VL53L0X_get_dist_mm()));
+		ob_leng_mm = ((float)tan(i*3.141592/180))*95.0;
+
+		if(ob_leng_TOF_mm > ob_leng_mm)
 		{
 			break;
-		}*/
+		}
 
 	}
-	right_motor_set_pos(right_return);
-	left_motor_set_pos(left_return);
-			////left_motor_set_speed(0);
-			//right_motor_set_speed(0);
+
+	right_motor_set_pos(return_value[1]);
+	left_motor_set_pos(return_value[0]);
+
 	while(!stop)
 	{
 				if((right_motor_get_pos() > 0) && (left_motor_get_pos() < 0))
@@ -176,31 +176,99 @@ uint16_t obstacle_length_left()
 }
 
 
-//similaire a o.._l.._left mais tourne dans le sens inverse
-uint16_t obstacle_length_right()
+
+uint16_t obstacle_length_left()
 {
-	uint16_t ob_leng_TOF_mm = 0;
-	uint16_t ob_leng_mm = 0;
-	for(int i = 1; i<90; i++)
+	float ob_leng_TOF_mm = 0.0;
+	float ob_leng_mm = 0.0;
+	uint16_t return_value[2] = {0}; //left 0 right 1
+	uint8_t stop = 0;
+	for(uint16_t i = 1; i<90; i++)
 	{
 
-		//motor_angle(0);
+		right_motor_set_pos(0);
+		left_motor_set_pos(0);
+		left_motor_set_speed(0);
+		right_motor_set_speed(0);
 
 
-		ob_leng_TOF_mm = (uint16_t) (sin(i)*((float)(VL53L0X_get_dist_mm())));
-		ob_leng_mm = (uint16_t) (tan(i)*DIST_STOP);
-
-		if(ob_leng_mm != ob_leng_TOF_mm)
+		while(!stop)
 		{
-			motor_angle(-i);
+			if((abs(right_motor_get_pos()) > 4) && (abs(left_motor_get_pos()) > 4))
+			{
+				left_motor_set_speed(0);
+				right_motor_set_speed(0);
+				return_value[0] += left_motor_get_pos();
+				return_value[1] += right_motor_get_pos();
+
+				stop=1;
+			}
+			else
+			{
+				left_motor_set_speed(-326);
+				right_motor_set_speed(326);
+			}
+
+		}
+		stop =0;
+
+		ob_leng_TOF_mm = ((float)sin(i*3.141592/180))*((float)(VL53L0X_get_dist_mm()));
+		ob_leng_mm = ((float)tan(i*3.141592/180))*95.0;
+
+		if(ob_leng_TOF_mm > ob_leng_mm)
+		{
 			break;
 		}
+
+	}
+
+	right_motor_set_pos(return_value[1]);
+	left_motor_set_pos(return_value[0]);
+
+	while(!stop)
+	{
+				if((right_motor_get_pos() < 0) && (left_motor_get_pos() > 0))
+				{
+					left_motor_set_speed(0);
+					right_motor_set_speed(0);
+					stop=1;
+				}
+				else
+					{
+					left_motor_set_speed(326);
+					right_motor_set_speed(-326);
+					}
 
 	}
 	return	ob_leng_mm;
 }
 
-uint16_t direction_choose(uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r)
+
+void motor_turn_obs(uint16_t pos_right, uint16_t pos_left)
+{
+	uint8_t stop = 0;
+	right_motor_set_pos(0);
+	left_motor_set_pos(0);
+	left_motor_set_speed(0);
+	right_motor_set_speed(0);
+
+	while(!stop)
+	{
+		if((abs(right_motor_get_pos()) > pos_right) && (abs(left_motor_get_pos()) > pos_left))
+		{
+			left_motor_set_speed(0);
+			right_motor_set_speed(0);
+			stop=1;
+		}
+		else
+		{
+			left_motor_set_speed(500);
+			right_motor_set_speed(500);
+		}
+	}
+}
+
+uint8_t direction_choose(uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r)
 {
 	uint16_t way_2_go = 0;
 	if(ob_leng_mm_l > ob_leng_mm_r)
@@ -218,3 +286,70 @@ uint16_t direction_choose(uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r)
 	return way_2_go;
 }
 
+
+void motor_command_obs_dodge(uint8_t direction, uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r)
+{
+	right_motor_set_pos(0);
+		left_motor_set_pos(0);
+		left_motor_set_speed(0);
+		right_motor_set_speed(0);
+		uint8_t stop= 0;
+
+	if(direction == S_RIGHT)
+	{
+		while(!stop)
+		{
+			if((abs(right_motor_get_pos()) > 320) && (abs(left_motor_get_pos()) > 320))
+			{
+				left_motor_set_speed(0);
+				right_motor_set_speed(0);
+				stop=1;
+			}
+			else
+			{
+				left_motor_set_speed(400);
+				right_motor_set_speed(-400);
+			}
+		}
+		stop =0;
+		motor_turn_obs(8*ob_leng_mm_r+40, 8*ob_leng_mm_l+40);
+	}
+	else if(direction == S_LEFT)
+		{
+			while(!stop)
+			{
+				if((abs(right_motor_get_pos()) > 320) && (abs(left_motor_get_pos()) > 320))
+				{
+					left_motor_set_speed(0);
+					right_motor_set_speed(0);
+					stop=1;
+				}
+				else
+				{
+					left_motor_set_speed(-400);
+					right_motor_set_speed(400);
+				}
+			}
+			stop =0;
+			motor_turn_obs(8*ob_leng_mm_r+40, 8*ob_leng_mm_l+40);
+		}
+	else
+	{
+		while(!stop)
+		{
+			if((abs(right_motor_get_pos()) > 40) && (abs(left_motor_get_pos()) > 40))
+			{
+				left_motor_set_speed(0);
+				right_motor_set_speed(0);
+				stop=1;
+			}
+			else
+			{
+				left_motor_set_speed(-400);
+				right_motor_set_speed(-400);
+			}
+		}
+		stop =0;
+	}
+
+}
