@@ -11,9 +11,9 @@
 
 #define KP				0.05
 #define KI				0.5
-#define INTENSITY_MAX	200000.0
+#define INTENSITY_MAX	190000.0
 #define MAX_SUM_ERROR	100.
-#define ERROR_THRESHOLD	5000.0 // = MAX_SUM_ERROR/KI à tester
+#define ERROR_THRESHOLD	50.0 // = MAX_SUM_ERROR/KI à tester
 
 #define V_SLOW			600
 #define V_NULL			0
@@ -72,7 +72,7 @@ static THD_FUNCTION(PiRegulator, arg) {
        	//the intensity is modified by the sound processing thread
         if(pi_state == STATE_PI)
         {
-        	speed = 2200;//pi_regulator(get_intensity(), INTENSITY_MAX);
+        	speed = pi_regulator(get_intensity(), INTENSITY_MAX);
         }
         else
         {

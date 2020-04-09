@@ -35,4 +35,9 @@ void motor_command(int8_t direction, int8_t max_norm_index);
 */
 float* get_audio_buffer_ptr(BUFFER_NAME_t name);
 
+/*
+ * 	Simple function to give the norm
+ */
+float get_intensity(void);
+
 #endif /* AUDIO_PROCESSING_H */

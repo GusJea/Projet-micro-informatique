@@ -39,6 +39,8 @@ static float micBack_output[FFT_SIZE];
 #define FREQ_FAST_L		FREQ_FAST-1
 #define FREQ_FAST_H		FREQ_FAST+1
 
+static float ap_norm = MIN_VALUE_THRESHOLD;
+
 /*
 *	Simple function used to detect the highest value in a buffer
 *	and to execute a motor command depending on it
@@ -82,7 +84,7 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 			direction=DIR_STOP;
 		}
 	}
-
+	ap_norm = max_norm;
 	motor_command(direction, max_norm_index);
 }
 
@@ -272,3 +274,10 @@ void motor_command(int8_t direction, int8_t max_norm_index)
 	}
 }
 
+/*
+ * 	Simple function to give the norm
+ */
+float get_intensity()
+{
+	return ap_norm;
+}
