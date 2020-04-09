@@ -27,8 +27,9 @@ static float micFront_output[FFT_SIZE];
 static float micBack_output[FFT_SIZE];
 
 #define MIN_VALUE_THRESHOLD	30000
+#define INIT_VALUE			-1
 
-#define FREQ_SLOW		30	//467HZ
+#define FREQ_SLOW		30	//467Hz
 #define FREQ_FAST		50	//779Hz
 
 static float global_norm = 0;
@@ -37,40 +38,74 @@ static float global_norm = 0;
 *	Simple function used to detect the highest value in a buffer
 *	and to execute a motor command depending on it
 */
-void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
+void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
+{
 	float max_norm = MIN_VALUE_THRESHOLD;
-	int16_t direction = -1;
-	//int16_t old_norm_index = -1;
-	int16_t max_norm_index = -1;
+	int8_t direction = INIT_VALUE;
+	int16_t max_norm_index = INIT_VALUE;
 
 	//Search for the maximum sound intensity between the 2 frequencies we want to look at
-	for(int i=0; i<1; i++)
-	{
-		if(dataL[FREQ_SLOW+i*20] > max_norm)
+	//for(int i=0; i<2; i++)
+	//{
+		if(dataL[FREQ_SLOW/*+i*20*/] > max_norm)
 		{
-			max_norm = dataL[FREQ_SLOW+i*20];
-			max_norm_index = (FREQ_SLOW+i*20);
+			max_norm = dataL[FREQ_SLOW/*+i*20*/];
+			max_norm_index = FREQ_SLOW/*+i*20*/;
 			direction = DIR_LEFT;
 		}
-		else if(dataR[FREQ_SLOW+i*20] > max_norm)
+		if(dataR[FREQ_SLOW/*+i*20*/] > max_norm)
 		{
-			max_norm = dataR[FREQ_SLOW+i*20];
-			max_norm_index = (FREQ_SLOW+i*20);
+			max_norm = dataR[FREQ_SLOW/*+i*20*/];
+			max_norm_index = FREQ_SLOW/*+i*20*/;
 			direction = DIR_RIGHT;
 		}
-		else if(dataF[FREQ_SLOW+i*20] > max_norm)
+		if(dataF[FREQ_SLOW/*+i*20*/] > max_norm)
 		{
-			max_norm = dataF[FREQ_SLOW+i*20];
-			max_norm_index = (FREQ_SLOW+i*20);
+			max_norm = dataF[FREQ_SLOW/*+i*20*/];
+			max_norm_index = FREQ_SLOW/*+i*20*/;
 			direction = DIR_FORWARD;
 		}
-		else if(dataB[FREQ_SLOW+i*20] > max_norm)
+		if(dataB[FREQ_SLOW/*+i*20*/] > max_norm)
 		{
-			max_norm = dataB[FREQ_SLOW+i*20];
-			max_norm_index = (FREQ_SLOW+i*20);
+			max_norm = dataB[FREQ_SLOW/*+i*20*/];
+			max_norm_index = FREQ_SLOW/*+i*20*/;
 			direction = DIR_BACKWARD;
 		}
-	}
+		/////////////////////////////////////////////////////////////////////////////////////
+		//BRUTE FORCE
+		if(dataL[FREQ_FAST] > max_norm)
+		{
+			max_norm = dataL[FREQ_FAST];
+			max_norm_index = FREQ_FAST;
+			direction = DIR_LEFT;
+		}
+		if(dataR[FREQ_FAST] > max_norm)
+		{
+			max_norm = dataR[FREQ_FAST];
+			max_norm_index = (FREQ_FAST);
+			direction = DIR_RIGHT;
+		}
+		if(dataF[FREQ_FAST] > max_norm)
+		{
+			max_norm = dataF[FREQ_FAST];
+			max_norm_index = FREQ_FAST;
+			direction = DIR_FORWARD;
+		}
+		if(dataB[FREQ_FAST] > max_norm)
+		{
+			max_norm = dataB[FREQ_FAST];
+			max_norm_index = FREQ_FAST;
+			direction = DIR_BACKWARD;
+		}
+		//FIN BRUTE FORCE
+		/////////////////////////////////////////////////////////////////////////////////////
+		if(max_norm <= MIN_VALUE_THRESHOLD)
+		{
+			max_norm_index = FREQ_SLOW;
+			direction = DIR_STOP;
+		}
+	//}
+
 	set_intensity(max_norm);
 	motor_command(direction, max_norm_index);
 }
@@ -87,11 +122,9 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 void processAudioData(int16_t *data, uint16_t num_samples){
 
 	/*
-	*
 	*	We get 160 samples per mic every 10ms
 	*	So we fill the samples buffers to reach
 	*	1024 samples, then we compute the FFTs.
-	*
 	*/
 
 	static uint16_t nb_samples = 0;
@@ -158,11 +191,13 @@ void processAudioData(int16_t *data, uint16_t num_samples){
 	}
 }
 
-void wait_send_to_computer(void){
+void wait_send_to_computer(void)
+{
 	chBSemWait(&sendToComputer_sem);
 }
 
-float* get_audio_buffer_ptr(BUFFER_NAME_t name){
+float* get_audio_buffer_ptr(BUFFER_NAME_t name)
+{
 	if(name == LEFT_CMPLX_INPUT){
 		return micLeft_cmplx_input;
 	}
@@ -205,7 +240,7 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name){
 *							-> 4:	stop the motors
 *	uint16_t max_norm_index	Tells the frequency of the sound captured so the speed can depend of it.
 */
-void motor_command(int16_t direction, int16_t max_norm_index)
+void motor_command(int8_t direction, int16_t max_norm_index)
 {
 	//check the direction
 	switch(direction)
@@ -213,37 +248,57 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 		case DIR_LEFT:
 			//check if the PI is used or not
 			if(max_norm_index == FREQ_SLOW)
+			{
 				set_state(STATE_NPI, DIR_LEFT);
+			}
 			else if(max_norm_index == FREQ_FAST)
+			{
 				set_state(STATE_PI, DIR_LEFT);
+			}
 			break;
 		case DIR_RIGHT:
 			//check if the PI is used or not
 			if(max_norm_index == FREQ_SLOW)
+			{
 				set_state(STATE_NPI, DIR_RIGHT);
+			}
 			else if(max_norm_index == FREQ_FAST)
+			{
 				set_state(STATE_PI, DIR_RIGHT);
+			}
 			break;
 		case DIR_FORWARD:
 			//check if the PI is used or not
 			if(max_norm_index == FREQ_SLOW)
+			{
 				set_state(STATE_NPI, DIR_FORWARD);
+			}
 			else if(max_norm_index == FREQ_FAST)
+			{
 				set_state(STATE_PI, DIR_FORWARD);
+			}
 			break;
 		case DIR_BACKWARD:
 			//check if the PI is used or not
 			if(max_norm_index == FREQ_SLOW)
+			{
 				set_state(STATE_NPI, DIR_BACKWARD);
+			}
 			else if(max_norm_index == FREQ_FAST)
+			{
 				set_state(STATE_PI, DIR_BACKWARD);
+			}
 			break;
 		case DIR_STOP:
 			//check if the PI is used or not
 			if(max_norm_index == FREQ_SLOW)
+			{
 				set_state(STATE_NPI, DIR_STOP);
+			}
 			else if(max_norm_index == FREQ_FAST)
+			{
 				set_state(STATE_PI, DIR_STOP);
+			}
 			break;
 	}
 }
@@ -251,9 +306,9 @@ void motor_command(int16_t direction, int16_t max_norm_index)
 /*
 *	Simple function to set the maximum intensity
 */
-void set_intensity(float max_norm)
+void set_intensity(float norm)
 {
-	global_norm = max_norm;
+	global_norm = norm;
 }
 
 /*
