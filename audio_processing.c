@@ -29,10 +29,15 @@ static float micBack_output[FFT_SIZE];
 #define MIN_VALUE_THRESHOLD	30000
 #define INIT_VALUE			-1
 
+#define FREQ_MIN		25	//Start scanning
 #define FREQ_SLOW		30	//467Hz
 #define FREQ_FAST		50	//779Hz
+#define FREQ_MAX		55	//End scanning
 
-static float global_norm = 0;
+#define FREQ_SLOW_L		FREQ_SLOW-1
+#define FREQ_SLOW_H		FREQ_SLOW+1
+#define FREQ_FAST_L		FREQ_FAST-1
+#define FREQ_FAST_H		FREQ_FAST+1
 
 /*
 *	Simple function used to detect the highest value in a buffer
@@ -42,71 +47,42 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 {
 	float max_norm = MIN_VALUE_THRESHOLD;
 	int8_t direction = INIT_VALUE;
-	int16_t max_norm_index = INIT_VALUE;
+	int8_t max_norm_index = INIT_VALUE;
 
 	//Search for the maximum sound intensity between the 2 frequencies we want to look at
-	//for(int i=0; i<2; i++)
-	//{
-		if(dataL[FREQ_SLOW/*+i*20*/] > max_norm)
+	for(int i=FREQ_MIN; i<=FREQ_MAX; i++)
+	{
+		if(dataR[i]>max_norm)
 		{
-			max_norm = dataL[FREQ_SLOW/*+i*20*/];
-			max_norm_index = FREQ_SLOW/*+i*20*/;
-			direction = DIR_LEFT;
+			max_norm=dataR[i];
+			max_norm_index=i;
+			direction=DIR_RIGHT;
 		}
-		if(dataR[FREQ_SLOW/*+i*20*/] > max_norm)
+		if(dataL[i]>max_norm)
 		{
-			max_norm = dataR[FREQ_SLOW/*+i*20*/];
-			max_norm_index = FREQ_SLOW/*+i*20*/;
-			direction = DIR_RIGHT;
+			max_norm=dataL[i];
+			max_norm_index=i;
+			direction=DIR_LEFT;
 		}
-		if(dataF[FREQ_SLOW/*+i*20*/] > max_norm)
+		if(dataF[i]>max_norm)
 		{
-			max_norm = dataF[FREQ_SLOW/*+i*20*/];
-			max_norm_index = FREQ_SLOW/*+i*20*/;
-			direction = DIR_FORWARD;
+			max_norm=dataF[i];
+			max_norm_index=i;
+			direction=DIR_FORWARD;
 		}
-		if(dataB[FREQ_SLOW/*+i*20*/] > max_norm)
+		if(dataR[B]>max_norm)
 		{
-			max_norm = dataB[FREQ_SLOW/*+i*20*/];
-			max_norm_index = FREQ_SLOW/*+i*20*/;
-			direction = DIR_BACKWARD;
+			max_norm=dataB[i];
+			max_norm_index=i;
+			direction=DIR_BACKWARD;
 		}
-		/////////////////////////////////////////////////////////////////////////////////////
-		//BRUTE FORCE
-		if(dataL[FREQ_FAST] > max_norm)
+		if(max_norm == MIN_VALUE_THRESHOLD)
 		{
-			max_norm = dataL[FREQ_FAST];
-			max_norm_index = FREQ_FAST;
-			direction = DIR_LEFT;
+			max_norm_index=FREQ_SLOW;
+			direction=DIR_STOP;
 		}
-		if(dataR[FREQ_FAST] > max_norm)
-		{
-			max_norm = dataR[FREQ_FAST];
-			max_norm_index = (FREQ_FAST);
-			direction = DIR_RIGHT;
-		}
-		if(dataF[FREQ_FAST] > max_norm)
-		{
-			max_norm = dataF[FREQ_FAST];
-			max_norm_index = FREQ_FAST;
-			direction = DIR_FORWARD;
-		}
-		if(dataB[FREQ_FAST] > max_norm)
-		{
-			max_norm = dataB[FREQ_FAST];
-			max_norm_index = FREQ_FAST;
-			direction = DIR_BACKWARD;
-		}
-		//FIN BRUTE FORCE
-		/////////////////////////////////////////////////////////////////////////////////////
-		if(max_norm <= MIN_VALUE_THRESHOLD)
-		{
-			max_norm_index = FREQ_SLOW;
-			direction = DIR_STOP;
-		}
-	//}
+	}
 
-	set_intensity(max_norm);
 	motor_command(direction, max_norm_index);
 }
 
@@ -247,74 +223,61 @@ void motor_command(int8_t direction, int16_t max_norm_index)
 	{
 		case DIR_LEFT:
 			//check if the PI is used or not
-			if(max_norm_index == FREQ_SLOW)
+			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				set_state(STATE_NPI, DIR_LEFT);
+				right_motor_set_speed(600);
+			 	left_motor_set_speed(-600);
 			}
-			else if(max_norm_index == FREQ_FAST)
+			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				set_state(STATE_PI, DIR_LEFT);
+				right_motor_set_speed(2000);
+				left_motor_set_speed(-2000);
 			}
 			break;
 		case DIR_RIGHT:
 			//check if the PI is used or not
-			if(max_norm_index == FREQ_SLOW)
+			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				set_state(STATE_NPI, DIR_RIGHT);
+				right_motor_set_speed(-600);
+			 	left_motor_set_speed(600);
 			}
-			else if(max_norm_index == FREQ_FAST)
+			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				set_state(STATE_PI, DIR_RIGHT);
+				right_motor_set_speed(-2000);
+				left_motor_set_speed(2000);
 			}
 			break;
 		case DIR_FORWARD:
 			//check if the PI is used or not
-			if(max_norm_index == FREQ_SLOW)
+			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				set_state(STATE_NPI, DIR_FORWARD);
+				right_motor_set_speed(600);
+			 	left_motor_set_speed(600);
 			}
-			else if(max_norm_index == FREQ_FAST)
+			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				set_state(STATE_PI, DIR_FORWARD);
+				right_motor_set_speed(2000);
+				left_motor_set_speed(2000);
 			}
 			break;
 		case DIR_BACKWARD:
 			//check if the PI is used or not
-			if(max_norm_index == FREQ_SLOW)
+			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				set_state(STATE_NPI, DIR_BACKWARD);
+				right_motor_set_speed(-600);
+			 	left_motor_set_speed(-600);
 			}
-			else if(max_norm_index == FREQ_FAST)
+			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				set_state(STATE_PI, DIR_BACKWARD);
+				right_motor_set_speed(-2000);
+				left_motor_set_speed(-2000);
 			}
 			break;
 		case DIR_STOP:
 			//check if the PI is used or not
-			if(max_norm_index == FREQ_SLOW)
-			{
-				set_state(STATE_NPI, DIR_STOP);
-			}
-			else if(max_norm_index == FREQ_FAST)
-			{
-				set_state(STATE_PI, DIR_STOP);
-			}
+			right_motor_set_speed(0);
+			left_motor_set_speed(0);
 			break;
 	}
 }
 
-/*
-*	Simple function to set the maximum intensity
-*/
-void set_intensity(float norm)
-{
-	global_norm = norm;
-}
-
-/*
-*	Simple function to get the maximum intensity
-*/
-float get_intensity()
-{
-	return global_norm;
-}

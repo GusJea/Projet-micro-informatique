@@ -1,7 +1,6 @@
 #ifndef AUDIO_PROCESSING_H
 #define AUDIO_PROCESSING_H
 
-
 #define FFT_SIZE 	1024
 #define DIR_LEFT		0
 #define DIR_RIGHT		1
@@ -22,7 +21,6 @@ typedef enum {
 	BACK_OUTPUT
 } BUFFER_NAME_t;
 
-
 void processAudioData(int16_t *data, uint16_t num_samples);
 
 /*
@@ -30,20 +28,11 @@ void processAudioData(int16_t *data, uint16_t num_samples);
 */
 void wait_send_to_computer(void);
 
-void motor_command(int8_t direction, int16_t max_norm_index);
+void motor_command(int8_t direction, int8_t max_norm_index);
+
 /*
 *	Returns the pointer to the BUFFER_NAME_t buffer asked
 */
 float* get_audio_buffer_ptr(BUFFER_NAME_t name);
-
-/*
- * Set the maximum intensity
- */
-void set_intensity(float norm);
-
-/*
- * Get the maximum intensity
- */
-float get_intensity(void);
 
 #endif /* AUDIO_PROCESSING_H */
