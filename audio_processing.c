@@ -70,7 +70,7 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 			max_norm_index=i;
 			direction=DIR_FORWARD;
 		}
-		if(dataR[B]>max_norm)
+		if(dataB[i]>max_norm)
 		{
 			max_norm=dataB[i];
 			max_norm_index=i;
@@ -216,7 +216,7 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name)
 *							-> 4:	stop the motors
 *	uint16_t max_norm_index	Tells the frequency of the sound captured so the speed can depend of it.
 */
-void motor_command(int8_t direction, int16_t max_norm_index)
+void motor_command(int8_t direction, int8_t max_norm_index)
 {
 	//check the direction
 	switch(direction)
@@ -225,58 +225,49 @@ void motor_command(int8_t direction, int16_t max_norm_index)
 			//check if the PI is used or not
 			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				right_motor_set_speed(600);
-			 	left_motor_set_speed(-600);
+				set_state(STATE_NPI, DIR_LEFT);
 			}
 			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				right_motor_set_speed(2000);
-				left_motor_set_speed(-2000);
+				set_state(STATE_PI, DIR_LEFT);
 			}
 			break;
 		case DIR_RIGHT:
 			//check if the PI is used or not
 			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				right_motor_set_speed(-600);
-			 	left_motor_set_speed(600);
+				set_state(STATE_NPI, DIR_RIGHT);
 			}
 			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				right_motor_set_speed(-2000);
-				left_motor_set_speed(2000);
+				set_state(STATE_PI, DIR_RIGHT);
 			}
 			break;
 		case DIR_FORWARD:
 			//check if the PI is used or not
 			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				right_motor_set_speed(600);
-			 	left_motor_set_speed(600);
+				set_state(STATE_NPI, DIR_FORWARD);
 			}
 			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				right_motor_set_speed(2000);
-				left_motor_set_speed(2000);
+				set_state(STATE_PI, DIR_FORWARD);
 			}
 			break;
 		case DIR_BACKWARD:
 			//check if the PI is used or not
 			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
 			{
-				right_motor_set_speed(-600);
-			 	left_motor_set_speed(-600);
+				set_state(STATE_NPI, DIR_BACKWARD);
 			}
 			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
 			{
-				right_motor_set_speed(-2000);
-				left_motor_set_speed(-2000);
+				set_state(STATE_PI, DIR_BACKWARD);
 			}
 			break;
 		case DIR_STOP:
 			//check if the PI is used or not
-			right_motor_set_speed(0);
-			left_motor_set_speed(0);
+			set_state(STATE_NPI, DIR_STOP);
 			break;
 	}
 }

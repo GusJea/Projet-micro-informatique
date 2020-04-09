@@ -11,9 +11,9 @@
 
 #define KP				0.05
 #define KI				0.5
-#define INTENSITY_MAX	190000.0
+#define INTENSITY_MAX	200000.0
 #define MAX_SUM_ERROR	100.
-#define ERROR_THRESHOLD	10000.0
+#define ERROR_THRESHOLD	5000.0 // = MAX_SUM_ERROR/KI à tester
 
 #define V_SLOW			600
 #define V_NULL			0
@@ -22,8 +22,8 @@
  * -> 0: PI is not used
  * -> 1: PI is used
  */
-static  uint8_t pi_state = STATE_NPI;
-static  uint8_t pi_dir = DIR_STOP;
+static  int8_t pi_state = STATE_NPI;
+static  int8_t pi_dir = DIR_STOP;
 
 //simple PI regulator implementation
 int16_t pi_regulator(float intensity, float goal){
@@ -36,18 +36,22 @@ int16_t pi_regulator(float intensity, float goal){
 	//disables the PI regulator if the error is to small
 	//this avoids to always move as we cannot exactly be where we want and 
 	//the mics are a bit noisy
-	if(fabs(error) < ERROR_THRESHOLD){
-		return 0;
+	if(fabs(error) < ERROR_THRESHOLD)
+	{
+		return V_NULL;
 	}
 	sum_error += error;
 
 	//we set a maximum and a minimum for the sum to avoid an uncontrolled growth
-	if(sum_error > MAX_SUM_ERROR){
+	if(sum_error > MAX_SUM_ERROR)
+	{
 		sum_error = MAX_SUM_ERROR;
-	}else if(sum_error < -MAX_SUM_ERROR){
+	}
+	else if(sum_error < -MAX_SUM_ERROR)
+	{
 		sum_error = -MAX_SUM_ERROR;
 	}
-	speed = KP * error /*+ KI * sum_error*/;
+	speed = KP * error + KI * sum_error;
     return (int16_t)speed;
 }
 
@@ -58,19 +62,22 @@ static THD_FUNCTION(PiRegulator, arg) {
     (void)arg;
 
     systime_t time;
-
-    int16_t speed = 0;
+    int16_t speed = V_NULL;
     //int16_t speed_correction = 0;
 
-    while(1){
+    while(1)
+    {
         time = chVTGetSystemTime();
        	//computes the speed to give to the motors
        	//the intensity is modified by the sound processing thread
         if(pi_state == STATE_PI)
-        	speed = pi_regulator(get_intensity(), INTENSITY_MAX);
+        {
+        	speed = 2200;//pi_regulator(get_intensity(), INTENSITY_MAX);
+        }
         else
-       		speed = V_SLOW;
-
+        {
+        	speed = V_SLOW;
+        }
        	//computes a correction factor to let the robot rotate to be in front of the line
        	//speed_correction = (get_line_position() - (IMAGE_BUFFER_SIZE/2));
 
@@ -79,7 +86,7 @@ static THD_FUNCTION(PiRegulator, arg) {
         		//speed_correction = 0;
         	//}
 
-        	//applies the speed from the PI regulator and the correction for the rotation
+        //applies the speed and the correction for the rotation
         switch(pi_dir)
         {
         	case DIR_LEFT:
@@ -108,7 +115,8 @@ static THD_FUNCTION(PiRegulator, arg) {
     }
 }
 
-void pi_regulator_start(void){
+void pi_regulator_start(void)
+{
 	chThdCreateStatic(waPiRegulator, sizeof(waPiRegulator), NORMALPRIO, PiRegulator, NULL);
 }
 
@@ -123,7 +131,7 @@ void pi_regulator_start(void){
  * -> 2: forward
  * -> 3: backward
  */
-void set_state(int state, int direction)
+void set_state(int8_t state, int8_t direction)
 {
 	pi_state=state;
 	pi_dir=direction;

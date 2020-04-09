@@ -7,6 +7,6 @@
 //start the PI regulator thread
 void pi_regulator_start(void);
 //Change the state and the direction
-void set_state(int state, int direction);
+void set_state(int8_t state, int8_t direction);
 
 #endif /* PI_REGULATOR_H */
