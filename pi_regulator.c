@@ -9,7 +9,7 @@
 #include <pi_regulator.h>
 #include <audio_processing.h>
 
-#define KP				0.05
+#define KP				4
 #define KI				0.5
 #define INTENSITY_MAX	190000.0
 #define MAX_SUM_ERROR	100.
@@ -39,6 +39,9 @@ int16_t pi_regulator(float intensity, float goal){
 	if(fabs(error) < ERROR_THRESHOLD)
 	{
 		return V_NULL;
+	}else if(fabs(error) > MAX_ERROR)
+	{
+		error = V_SLOW;
 	}
 	sum_error += error;
 
