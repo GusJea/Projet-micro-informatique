@@ -12,8 +12,8 @@ void scan_obstacle(void);
 void sensor_init(void);
 
 //mesure la longueure de l'obstacle a gauche et droite
-uint16_t obstacle_length_left(void);
-uint16_t obstacle_length_right(void);
+uint16_t obstacle_length_left(uint16_t d_0);
+uint16_t obstacle_length_right(uint16_t d_0);
 
 
 //défini dans quelle direction aller
@@ -24,6 +24,10 @@ uint8_t direction_choose(uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r);
 void motor_command_obs_dodge(uint8_t direction, uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r);
 
 
-void motor_turn_obs(uint16_t pos_right, uint16_t pos_left);
+uint8_t obstacle_center(uint16_t d_0);
+
+//void motor_turn_obs(uint16_t pos_right, uint16_t pos_left);
+
+void motor_turn(int speed_r, int speed_l, int32_t pos_right, int32_t pos_left);
 
 #endif /* OBSTACLE_H_ */
