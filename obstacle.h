@@ -10,18 +10,18 @@ void detect_obstacle(void);
 
 void scan_obstacle(void);
 void sensor_init(void);
-
+void ir_values(int* valeurs);
 //mesure la longueure de l'obstacle a gauche et droite
-uint16_t obstacle_length_left(uint16_t d_0);
-uint16_t obstacle_length_right(uint16_t d_0);
+void obstacle_length_left(uint16_t* left_side);
+void obstacle_length_right(uint16_t* right_side);
 
 
 //défini dans quelle direction aller
-uint8_t direction_choose(uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r);
+uint8_t direction_choose(uint16_t* left_side, uint16_t* right_side);
 
 
 //commande une tour de 90 degrés dans la direction a suivre puis evite l'obstacle
-void motor_command_obs_dodge(uint8_t direction, uint16_t ob_leng_mm_l, uint16_t ob_leng_mm_r);
+void motor_command_obs_dodge(uint8_t direction, uint16_t* left_side, uint16_t* right_side);
 
 
 uint8_t obstacle_center(uint16_t d_0);

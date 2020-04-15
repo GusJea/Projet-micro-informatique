@@ -10,12 +10,14 @@
 #include <chprintf.h>
 #include <motors.h>
 #include <audio/microphone.h>
-
+#include <obstacle.h>
 #include <proximity.h>
 #include <audio_processing.h>
 #include <fft.h>
 #include <communications.h>
 #include <arm_math.h>
+#include <pi_regulator.h>
+
 
 //uncomment to send the FFTs results from the real microphones
 #define SEND_FROM_MIC
@@ -60,12 +62,24 @@ int main(void)
 
     //starts the serial communication
     serial_start();
+
     //starts the USB communication
     usb_start();
+
     //starts timer 12
     timer12_start();
+
     //inits the motors
     motors_init();
+
+    //init the pi regulator
+  // pi_regulator_start();
+
+    //init IR & TOF sensor
+    sensor_init();
+    object_length_start();
+    object_detect_start();
+
 
     //temp tab used to store values in complex_float format
     //needed bx doFFT_c
