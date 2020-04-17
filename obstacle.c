@@ -21,7 +21,7 @@ CONDVAR_DECL(bus_condvar);
 #define ACOS(x)			(float)acos(x)
 #define S_LEFT			1
 #define	S_RIGHT 		2
-#define EQUAL			3
+#define ESCAPE			3
 #define TO_CENTER		4
 #define CENTER			5
 #define IDLE			6
@@ -64,14 +64,21 @@ static THD_FUNCTION(DetectObjet_IR, arg)
 
 	while (1)
 	{
+
+
 		if(dodge_obs == TO_CENTER)
 		{
-			detect_obstacle();
+			center_IR();
+		}
+		else if(dodge_obs == IDLE)
+		{
+			detect_IR();
 		}
 		else if(go_along)
 		{
 			obj_ir_dodge();
 		}
+
 		chThdSleepMilliseconds(1);
 	}
 
@@ -89,38 +96,57 @@ void ir_values(int* valeurs)
 	}
 }
 
-void detect_obstacle()
+void detect_IR()
 {
-		int distance[IR_NUMBER] = {0};
-		ir_values(distance);
+	int distance[IR_NUMBER] = {0};
+	ir_values(distance);
 
 
-		//aligné
-		if((distance[0] >= 3000) && (distance[7] >= 3000))
+	/*
+	if(distance[7] >= 300 || distance[6] >= 300)
+	{
+		if(distance[5]<2500)
 		{
-			dodge_obs = CENTER;
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
+			motor_turn(-400, 400, 4,4);
 		}
-
-		//trop a gauche
-		else if(distance[0] >= 3000 || distance[1] >= 3000 /*|| distance[2] >= 2275*/)
+	}
+	else if(distance[0] >= 300 || distance[1] >= 300)
+	{
+		if(distance[2]<1000)
 		{
-			motor_turn(-326, 326, 3,3);
-
+			motor_turn(-400, 400, 4,4);
 		}
-
-		//trop a droite
-		else if(distance[7] >= 3000 || distance[6] >= 3000 /*|| distance[5] >= 2275*/)
-		{
-			motor_turn(326, -326, 3, 3);
-
-		}
-		else
-			motor_turn(326, 326, 3, 3);
+	}
+	*/
 }
 
-//mesure et décide de quel côtés de l'obstacle aller avec le TOF
+void center_IR()
+{
+	int distance[IR_NUMBER] = {0};
+	ir_values(distance);
+
+	//aligné
+	if((distance[0] >= 3000) && (distance[7] >= 3000))
+	{
+		dodge_obs = CENTER;
+		left_motor_set_speed(0);
+		right_motor_set_speed(0);
+	}
+	//trop a gauche
+	else if(distance[0] >= 3000 || distance[1] >= 1500)
+	{
+		motor_turn(-326, 326, 3,3);
+
+	}
+	//trop a droite
+	else if(distance[7] >= 3000 || distance[6] >= 1500)
+	{
+		motor_turn(326, -326, 3, 3);
+	}
+	else
+		motor_turn(326, 326, 3, 3);
+}
+
 
 void scan_obstacle()
 {
@@ -151,11 +177,6 @@ void scan_obstacle()
 			obstacle_length_right(right_side);
 			direction_choose(left_side, right_side);
 		}
-		/*if(dodge_obs == S_RIGHT)
-		{
-			motor_command_obs_dodge(left_side, right_side);
-			dodge_obs = IDLE;
-		}*/
 	}
 }
 
@@ -296,41 +317,62 @@ void obj_ir_dodge()
 	int distance[IR_NUMBER] = {0};
 	ir_values(distance);
 
-	if(dodge_obs == S_RIGHT)
+	/*switch(dodge_obs)
 	{
-
-		if(distance[5] >= 3000)
+		case*/if(dodge_obs== S_RIGHT)
 		{
-			motor_turn(400, 400, 4,4);
-			palClearPad(GPIOD, GPIOD_LED1);
+			if(distance[5] >= 1500 )
+			{
+				motor_turn(400, 400, 4,4);
+			}
+			else if(distance[6] < 100)
+			{
+				go_along = S_RIGHT;
+				dodge_obs = ESCAPE;
+			}
+			//break;
 		}
-		else
+		else if(dodge_obs== S_LEFT)
 		{
 
-			motor_turn(400, 400, 289,289);//200?
-			motor_turn(326, -326, 320,320);
+			if(distance[2] < 1500)
+			{
+				motor_turn(400, 400, 4,4);
+			}
+			else if(distance[1] < 100)
+			{
+				dodge_obs = ESCAPE;
+				go_along = S_LEFT;
+			}
+			//break;
+		}
+		else if(dodge_obs== ESCAPE)
+		{
+			motor_turn(400, 400, 380, 380);
+			if(go_along == S_LEFT)
+			{
+				motor_turn(-326, 326, 320,320);
+			}
+			else if(go_along == S_RIGHT)
+			{
+				motor_turn(326, -326, 320,320);
+			}
+
 			dodge_obs = IDLE;
 			go_along =0;
+			//break;
 		}
-	}
-	else if(dodge_obs == S_LEFT)
-	{
-
-		if(distance[2] >= 3000)
-		{
-			motor_turn(400, 400, 4,4);
-			palClearPad(GPIOD, GPIOD_LED3);
-		}
-		else
-		{
-
-			motor_turn(400, 400, 289,289);
-			motor_turn(-326, 326, 320,320);
-			dodge_obs = IDLE;
-			go_along =0;
-		}
-	}
+	//}
 }
+
+
+
+
+
+
+/*
+
+
 
 void motor_command_obs_dodge(uint16_t* left_side, uint16_t* right_side)
 {
@@ -351,3 +393,4 @@ void motor_command_obs_dodge(uint16_t* left_side, uint16_t* right_side)
 
 
 }
+*/
