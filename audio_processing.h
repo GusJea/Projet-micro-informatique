@@ -28,8 +28,6 @@ void processAudioData(int16_t *data, uint16_t num_samples);
 */
 void wait_send_to_computer(void);
 
-void motor_command(int8_t direction, int8_t max_norm_index);
-
 /*
 *	Returns the pointer to the BUFFER_NAME_t buffer asked
 */
@@ -39,5 +37,10 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name);
  * 	Simple function to give the norm
  */
 float get_intensity(void);
+
+/*
+ * 	Simple function to get the phase
+ */
+float phase(int8_t index);
 
 #endif /* AUDIO_PROCESSING_H */

@@ -10,7 +10,6 @@
 #include <chprintf.h>
 #include <motors.h>
 #include <audio/microphone.h>
-#include <pi_regulator.h>
 #include <proximity.h>
 #include <audio_processing.h>
 #include <fft.h>
@@ -50,7 +49,6 @@ static void timer12_start(void){
 
 int main(void)
 {
-
     halInit();
     chSysInit();
     mpu_init();
@@ -64,7 +62,7 @@ int main(void)
     //inits the motors
     motors_init();
     //init the pi regulator
-    pi_regulator_start();
+    //pi_regulator_start();
 
 #ifdef SEND_FROM_MIC
     //starts the microphones processing thread.
@@ -76,7 +74,7 @@ int main(void)
     while (1) {
 #ifdef SEND_FROM_MIC
         //waits until a result must be sent to the computer
-        wait_send_to_computer();
+        //wait_send_to_computer();
 #endif  /* SEND_FROM_MIC */
     }
 }

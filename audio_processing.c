@@ -3,6 +3,7 @@
 #include <main.h>
 #include <usbcfg.h>
 #include <chprintf.h>
+#include <stdio.h>
 
 #include <motors.h>
 #include <audio/microphone.h>
@@ -10,10 +11,11 @@
 #include <communications.h>
 #include <fft.h>
 #include <arm_math.h>
-#include <pi_regulator.h>
 
 //semaphore
-static BSEMAPHORE_DECL(sendToComputer_sem, TRUE);
+static BSEMAPHORE_DECL(sendToComputer_sem, TRUE); // @suppress("Field cannot be resolved")
+
+static int8_t old_phase = 0;
 
 //2 times FFT_SIZE because these arrays contain complex numbers (real + imaginary)
 static float micLeft_cmplx_input[2 * FFT_SIZE];
@@ -39,6 +41,9 @@ static float micBack_output[FFT_SIZE];
 #define FREQ_FAST_L		FREQ_FAST-1
 #define FREQ_FAST_H		FREQ_FAST+1
 
+#define V_SLOW 			600
+#define V_NULL			0
+
 static float ap_norm = MIN_VALUE_THRESHOLD;
 
 /*
@@ -47,45 +52,138 @@ static float ap_norm = MIN_VALUE_THRESHOLD;
 */
 void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 {
+	float max_norm_r = MIN_VALUE_THRESHOLD;
+	float max_norm_l = MIN_VALUE_THRESHOLD;
 	float max_norm = MIN_VALUE_THRESHOLD;
+
+	int8_t max_index_l = INIT_VALUE;
+	int8_t max_index_r = INIT_VALUE;
+	int8_t max_index = INIT_VALUE;
+
 	int8_t direction = INIT_VALUE;
-	int8_t max_norm_index = INIT_VALUE;
 
 	//Search for the maximum sound intensity between the 2 frequencies we want to look at
-	for(int i=FREQ_MIN; i<=FREQ_MAX; i++)
+	for(int i=FREQ_MIN; i <=FREQ_MAX; i++ )
 	{
-		if(dataR[i]>max_norm)
+		//Maximum intensity and frequency peak of the right and left mics
+		if(dataL[i]>=max_norm_l)
 		{
-			max_norm=dataR[i];
-			max_norm_index=i;
-			direction=DIR_RIGHT;
+			max_norm_l=dataL[i];
+			max_index_l = i;
 		}
-		if(dataL[i]>max_norm)
+		if(dataR[i]>=max_norm_r)
 		{
-			max_norm=dataL[i];
-			max_norm_index=i;
-			direction=DIR_LEFT;
+			max_norm_r=dataL[i];
+			max_index_r = i;
 		}
-		if(dataF[i]>max_norm)
+
+		//Maximum intensity and frequency peak of the 4 mics
+		if(dataL[i]>=max_norm)
 		{
-			max_norm=dataF[i];
-			max_norm_index=i;
-			direction=DIR_FORWARD;
+			direction = DIR_LEFT;
+			max_index = i;
+			max_norm = dataL[i];
 		}
-		if(dataB[i]>max_norm)
+		if(dataR[i]>=max_norm)
 		{
-			max_norm=dataB[i];
-			max_norm_index=i;
-			direction=DIR_BACKWARD;
+			direction = DIR_RIGHT;
+			max_index = i;
+			max_norm = dataR[i];
 		}
-		if(max_norm == MIN_VALUE_THRESHOLD)
+		if(dataF[i]>=max_norm)
 		{
-			max_norm_index=FREQ_SLOW;
-			direction=DIR_STOP;
+			direction = DIR_FORWARD;
+			max_index = i;
+			max_norm = dataF[i];
+		}
+		if(dataB[i]>=max_norm)
+		{
+			direction = DIR_BACKWARD;
+			max_index = i;
+			max_norm = dataL[i];
+		}
+		if(max_norm == MIN_VALUE_THRESHOLD || max_norm >= 1000000)
+		{
+			direction = DIR_STOP;
+		}
+
+	}
+	//Motor command depending on the direction of the maximum intensity
+	if(max_index >= FREQ_FAST_L && max_index <= FREQ_FAST_H)
+	{
+		switch(direction)
+		{
+			case DIR_LEFT:
+				right_motor_set_speed(V_SLOW);
+				left_motor_set_speed(-V_SLOW);
+				break;
+			case DIR_RIGHT:
+				right_motor_set_speed(-V_SLOW);
+				left_motor_set_speed(V_SLOW);
+				break;
+			case DIR_FORWARD:
+				if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
+				{
+					float phaser = (float)atan(micRight_cmplx_input[2*max_index_r+1]/micRight_cmplx_input[2*max_index_r]);
+					float phasel = (float)atan(micLeft_cmplx_input[2*max_index_l+1]/micLeft_cmplx_input[2*max_index_l]);
+					float dephasage = phasel-phaser;
+					if(fabs(dephasage) <= 0.5)
+					{
+						chprintf((BaseSequentialStream *) &SD3, "dphase : %.3f\n\r", dephasage);
+						dephasage = round(dephasage*10);
+						chprintf((BaseSequentialStream *) &SD3, "round dphase : %.3f\n\r", dephasage);
+						if(dephasage > 2 && old_phase == 0)
+						{
+							right_motor_set_speed(V_SLOW);
+							left_motor_set_speed(-V_SLOW);
+							old_phase = 1;
+						}
+						else if(dephasage < -2 && old_phase == 0)
+						{
+							right_motor_set_speed(-V_SLOW);
+							left_motor_set_speed(V_SLOW);
+							old_phase = -1;
+						}
+						else if(dephasage <= 0 && old_phase == 1)
+						{
+							right_motor_set_speed(V_NULL);
+							left_motor_set_speed(V_NULL);
+							old_phase = 0;
+						}
+						else if(dephasage >= 0 && old_phase == -1)
+						{
+							right_motor_set_speed(V_NULL);
+							left_motor_set_speed(V_NULL);
+							old_phase = 0;
+						}
+					}
+				}
+
+				break;
+			case DIR_BACKWARD:
+				if(max_norm_r >= max_norm_l)
+				{
+					right_motor_set_speed(-V_SLOW);
+					left_motor_set_speed(V_SLOW);
+				}
+				else
+				{
+					right_motor_set_speed(V_SLOW);
+					left_motor_set_speed(-V_SLOW);
+				}
+				break;
+			case DIR_STOP:
+				right_motor_set_speed(V_NULL);
+				left_motor_set_speed(V_NULL);
+				break;
 		}
 	}
-	ap_norm = max_norm;
-	motor_command(direction, max_norm_index);
+	else
+	{
+		right_motor_set_speed(V_NULL);
+		left_motor_set_speed(V_NULL);
+	}
+
 }
 
 /*
@@ -206,78 +304,22 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name)
 }
 
 /*
-*	Send the new speed of each motor depending of the direction and the frequency
-*	of the highest intensity of the sound detected.
-*
-*	params :
-*	int direction			Tells the direction of the robot:
-*							-> 0:	go left
-*							-> 1:	go right
-*							-> 2:	go forward
-*							-> 3:	go backward
-*							-> 4:	stop the motors
-*	uint16_t max_norm_index	Tells the frequency of the sound captured so the speed can depend of it.
-*/
-void motor_command(int8_t direction, int8_t max_norm_index)
-{
-	//check the direction
-	switch(direction)
-	{
-		case DIR_LEFT:
-			//check if the PI is used or not
-			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
-			{
-				set_state(STATE_NPI, DIR_LEFT);
-			}
-			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-			{
-				set_state(STATE_PI, DIR_LEFT);
-			}
-			break;
-		case DIR_RIGHT:
-			//check if the PI is used or not
-			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
-			{
-				set_state(STATE_NPI, DIR_RIGHT);
-			}
-			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-			{
-				set_state(STATE_PI, DIR_RIGHT);
-			}
-			break;
-		case DIR_FORWARD:
-			//check if the PI is used or not
-			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
-			{
-				set_state(STATE_NPI, DIR_FORWARD);
-			}
-			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-			{
-				set_state(STATE_PI, DIR_FORWARD);
-			}
-			break;
-		case DIR_BACKWARD:
-			//check if the PI is used or not
-			if(max_norm_index >= FREQ_SLOW_L && max_norm_index <= FREQ_SLOW_H)
-			{
-				set_state(STATE_NPI, DIR_BACKWARD);
-			}
-			else if(max_norm_index >= FREQ_FAST_L && max_norm_index <= FREQ_FAST_H)
-			{
-				set_state(STATE_PI, DIR_BACKWARD);
-			}
-			break;
-		case DIR_STOP:
-			//check if the PI is used or not
-			set_state(STATE_NPI, DIR_STOP);
-			break;
-	}
-}
-
-/*
  * 	Simple function to give the norm
  */
 float get_intensity()
 {
 	return ap_norm;
 }
+
+/*
+ * 	Simple function to get the phase
+ */
+float phase(int8_t index)
+{
+	float phase_right = 0;
+	float phase_left = 0;
+	phase_left = (float)atan(micLeft_cmplx_input[2*index+1]/micLeft_cmplx_input[2*index]);
+	phase_right =  (float)atan(micRight_cmplx_input[2*index+1]/micRight_cmplx_input[2*index]);
+	return (phase_left-phase_right);
+}
+
