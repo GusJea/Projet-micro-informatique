@@ -24,13 +24,16 @@ void scan_obstacle(void);
 void ir_values(int* valeurs);
 
 //mesure la longueure de l'obstacle a gauche et droite
+/*
 void obstacle_length_left(uint16_t* left_side);
 void obstacle_length_right(uint16_t* right_side);
-
+*/
+uint16_t obstacle_length_left(void);
+uint16_t obstacle_length_right(void);
 
 //défini dans quelle direction aller
-void direction_choose(uint16_t* left_side, uint16_t* right_side);
-
+//void direction_choose(uint16_t* left_side, uint16_t* right_side);
+void direction_choose(uint16_t left_side, uint16_t right_side);
 
 //évite l'obstacle avec IRs
 void obj_ir_dodge(void);

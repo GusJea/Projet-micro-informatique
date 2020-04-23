@@ -16,9 +16,10 @@ CONDVAR_DECL(bus_condvar);
 #define STEP_ADD_TOUR	5
 #define	DIST_STOP		70.0
 #define IR_NUMBER		8 // de 0 a 7 donc 8 sensor
-#define TAN(x)			(float)tan(x)
-#define SIN(x)			(float)sin(x)
-#define ACOS(x)			(float)acos(x)
+#define TAN(x)			tan(x)
+#define SIN(x)			sin(x)
+#define ACOS(x)			acos(x)
+#define DEG2RAD			M_PI/180
 #define S_LEFT			1
 #define	S_RIGHT 		2
 #define ESCAPE			3
@@ -27,6 +28,7 @@ CONDVAR_DECL(bus_condvar);
 #define IDLE			6
 static uint8_t	dodge_obs = IDLE;
 static uint8_t	go_along = 0;
+
 void sensor_init()
 {
 	//TOF
@@ -150,13 +152,7 @@ void center_IR()
 
 void scan_obstacle()
 {
-
 	uint16_t distance_mm = 0;
-
-	//.._side[0] = angle, .._side[1] = tof final, .._side[2] = tof ini, .._side[3] = longueure gauche
-	uint16_t left_side[4] ={0};
-	uint16_t right_side[4] ={0};
-
 	distance_mm = VL53L0X_get_dist_mm();
 	if(distance_mm <= 70)
 	{
@@ -171,51 +167,42 @@ void scan_obstacle()
 				motor_turn(-326, -326, 4, 4);
 				distance_mm = VL53L0X_get_dist_mm();
 			}
-			left_side[2]=distance_mm;
-			right_side[2]=distance_mm;
-			obstacle_length_left(left_side);
-			obstacle_length_right(right_side);
-			direction_choose(left_side, right_side);
+			direction_choose(obstacle_length_left(),obstacle_length_right());
 		}
 	}
 }
 
-void obstacle_length_right(uint16_t* right_side)
+uint16_t obstacle_length_right(void)
 {
 	uint16_t return_value[2] = {0}; //left 0 right 1
-	uint8_t stop = 0;
 	double ob_leng_TOF_mm = 0;
 	double ob_leng_mm = 0;
-	uint16_t dist_obs = 0;
-	for(uint16_t i = 1; i<90; i++)
+	for(uint8_t i = 1; i<90; i++)
 	{
 
 		motor_turn(-326, 326, 4,4);
 		return_value[0] += left_motor_get_pos();
 		return_value[1] += right_motor_get_pos();
 
-		ob_leng_TOF_mm = sin(i*3.141592/180)*((double)(VL53L0X_get_dist_mm()));
-		ob_leng_mm = tan(i*3.141592/180)*((double)(DIST_STOP+37.5));
+		ob_leng_TOF_mm = sin(i*DEG2RAD)*((double)(VL53L0X_get_dist_mm()));
+		ob_leng_mm = tan(i*DEG2RAD)*((double)(DIST_STOP+37.5));
 
 		if(ob_leng_TOF_mm > ob_leng_mm)
 		{
-			right_side[3] = dist_obs;
 			break;
 		}
-		dist_obs = (uint16_t)(ob_leng_mm);
-
 	}
 
 	right_motor_set_pos(return_value[1]);
 	left_motor_set_pos(return_value[0]);
 
-	while(!stop)
+	while(1)
 	{
 				if((right_motor_get_pos() > 0) && (left_motor_get_pos() < 0))
 				{
 					left_motor_set_speed(0);
 					right_motor_set_speed(0);
-					stop=1;
+					break;
 				}
 				else
 				{
@@ -223,44 +210,40 @@ void obstacle_length_right(uint16_t* right_side)
 					right_motor_set_speed(326);
 				}
 	}
-
+	return (uint16_t)(ob_leng_mm);
 }
 
-void obstacle_length_left(uint16_t* left_side)
+uint16_t obstacle_length_left(void)
 {
 	uint16_t return_value[2] = {0}; //left 0 right 1
-	uint8_t stop = 0;
 	double ob_leng_TOF_mm = 0;
 	double ob_leng_mm = 0;
-	uint16_t dist_obs = 0;
-	for(uint16_t i = 1; i<90; i++)
+	for(uint8_t i = 1; i<90; i++)
 	{
 
 		motor_turn(326, -326, 4,4);
 		return_value[0] += left_motor_get_pos();
 		return_value[1] += right_motor_get_pos();
 
-		ob_leng_TOF_mm = sin(i*3.141592/180)*((double)(VL53L0X_get_dist_mm()));
-		ob_leng_mm = tan(i*3.141592/180)*(double)(DIST_STOP+37.5);
+		ob_leng_TOF_mm = sin(i*DEG2RAD)*((double)(VL53L0X_get_dist_mm()));
+		ob_leng_mm = tan(i*DEG2RAD)*(double)(DIST_STOP+37.5);
 
 		if(ob_leng_TOF_mm > ob_leng_mm)
 		{
-			left_side[3] = dist_obs;
 			break;
 		}
-		dist_obs = (uint16_t)(ob_leng_mm);
 	}
 
 	right_motor_set_pos(return_value[1]);
 	left_motor_set_pos(return_value[0]);
 
-	while(!stop)
+	while(1)
 	{
 		if((right_motor_get_pos() < 0) && (left_motor_get_pos() > 0))
 		{
 			left_motor_set_speed(0);
 			right_motor_set_speed(0);
-			stop=1;
+			break;
 		}
 		else
 		{
@@ -268,19 +251,20 @@ void obstacle_length_left(uint16_t* left_side)
 			right_motor_set_speed(-326);
 		}
 	}
+	return (uint16_t)(ob_leng_mm);
 }
 
-void direction_choose(uint16_t* left_side, uint16_t* right_side)
+void direction_choose(uint16_t left_side, uint16_t right_side)
 {
 
-	if(left_side[3] > right_side[3])
+	if(left_side > right_side)
 	{
 		dodge_obs = S_RIGHT;
 		motor_turn(400, 400, 400,400);
 		motor_turn(-400, 400, 320,320);
 		go_along = 1;
 	}
-	else if(left_side[3] <= right_side[3])
+	else if(left_side <= right_side)
 	{
 		dodge_obs = S_LEFT;
 		motor_turn(400, 400, 400,400);
@@ -291,18 +275,17 @@ void direction_choose(uint16_t* left_side, uint16_t* right_side)
 
 void motor_turn(int speed_r, int speed_l, int32_t pos_right, int32_t pos_left)
 {
-	uint8_t stop= 0;
 	right_motor_set_pos(0);
 	left_motor_set_pos(0);
 	left_motor_set_speed(0);
 	right_motor_set_speed(0);
-	while(!stop)
+	while(1)
 	{
 		if((abs(right_motor_get_pos()) > pos_right) && (abs(left_motor_get_pos()) > pos_left))
 		{
 			left_motor_set_speed(0);
 			right_motor_set_speed(0);
-			stop=1;
+			break;
 		}
 		else
 		{
@@ -370,27 +353,3 @@ void obj_ir_dodge()
 
 
 
-/*
-
-
-
-void motor_command_obs_dodge(uint16_t* left_side, uint16_t* right_side)
-{
-	if(dodge_obs == S_RIGHT)
-	{
-		motor_turn(-400, 400, 320,320);
-		motor_turn(500, 500,(int32_t)(7.9*(right_side[3]+38)), (int32_t)(7.9*(right_side[3]+38)));
-		motor_turn(400, -400, 320,320);
-		motor_turn(500, 500, (int32_t)(7.9*(35+DIST_STOP)), (int32_t)(7.9*(35+DIST_STOP)));
-	}
-	else if(dodge_obs == S_LEFT)
-	{
-		motor_turn(400, -400, 320,320);
-		motor_turn(500, 500, (int32_t)(7.9*(left_side[3]+38)), (int32_t)(7.9*(left_side[3]+38)));
-		motor_turn(-400, 400, 320,320);
-		motor_turn(500, 500, (int32_t)(7.9*(38+DIST_STOP)), (int32_t)(7.9*(38+DIST_STOP)));
-	}
-
-
-}
-*/
