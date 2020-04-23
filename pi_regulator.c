@@ -10,10 +10,11 @@
 #include <audio_processing.h>
 
 #define KP				4
-#define KI				0.5
-#define INTENSITY_MAX	190000.0
-#define MAX_SUM_ERROR	100.
-#define ERROR_THRESHOLD	50.0 // = MAX_SUM_ERROR/KI à tester
+#define KI				0.05
+#define INTENSITY_MAX	1000000.0
+#define MAX_SUM_ERROR	44000.0
+#define MAX_ERROR		50000.0
+#define ERROR_THRESHOLD	50000.0
 
 #define V_SLOW			600
 #define V_NULL			0
@@ -22,8 +23,9 @@
  * -> 0: PI is not used
  * -> 1: PI is used
  */
-static  int8_t pi_state = STATE_NPI;
+static  int8_t pi_state = STATE_PI;
 static  int8_t pi_dir = DIR_STOP;
+static  int8_t pi_dir_phase = DIR_STOP;
 
 //simple PI regulator implementation
 int16_t pi_regulator(float intensity, float goal){
@@ -33,16 +35,17 @@ int16_t pi_regulator(float intensity, float goal){
 	static float sum_error = 0;
 	error = goal - intensity;
 
+	chprintf((BaseSequentialStream *) &SD3, "intensity : %.3f\n\r", intensity);
+	chprintf((BaseSequentialStream *) &SD3, "error : %.3f\n\r", error);
+
 	//disables the PI regulator if the error is to small
 	//this avoids to always move as we cannot exactly be where we want and 
 	//the mics are a bit noisy
 	if(fabs(error) < ERROR_THRESHOLD)
 	{
 		return V_NULL;
-	}else if(fabs(error) > MAX_ERROR)
-	{
-		error = V_SLOW;
 	}
+
 	sum_error += error;
 
 	//we set a maximum and a minimum for the sum to avoid an uncontrolled growth
@@ -101,8 +104,20 @@ static THD_FUNCTION(PiRegulator, arg) {
                	left_motor_set_speed(speed);
         		break;
         	case DIR_FORWARD:
-               	right_motor_set_speed(speed);
-               	left_motor_set_speed(speed);
+        		if(pi_dir_phase == DIR_FORWARD)
+        		{
+                   	right_motor_set_speed(speed);
+                   	left_motor_set_speed(speed);
+        		}
+        		else if(pi_dir_phase == DIR_LEFT)
+               	{
+        			right_motor_set_speed(speed+300);
+                   	left_motor_set_speed(speed-300);
+               	}else if(pi_dir_phase == DIR_RIGHT)
+               	{
+               		right_motor_set_speed(speed-300);
+                   	left_motor_set_speed(speed+300);
+               	}
         		break;
         	case DIR_BACKWARD:
                	right_motor_set_speed(-speed);
@@ -138,4 +153,12 @@ void set_state(int8_t state, int8_t direction)
 {
 	pi_state=state;
 	pi_dir=direction;
+}
+
+/*
+ * Set the correction of the direction due to the phase between the right and the left mics
+ */
+void set_phase(int8_t direction_phase)
+{
+	pi_dir_phase = direction_phase;
 }

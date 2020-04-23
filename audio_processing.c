@@ -11,6 +11,7 @@
 #include <communications.h>
 #include <fft.h>
 #include <arm_math.h>
+#include <pi_regulator.h>
 
 //semaphore
 static BSEMAPHORE_DECL(sendToComputer_sem, TRUE); // @suppress("Field cannot be resolved")
@@ -114,46 +115,41 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 		switch(direction)
 		{
 			case DIR_LEFT:
-				right_motor_set_speed(V_SLOW);
-				left_motor_set_speed(-V_SLOW);
+				set_state(STATE_PI, DIR_LEFT);
 				break;
 			case DIR_RIGHT:
-				right_motor_set_speed(-V_SLOW);
-				left_motor_set_speed(V_SLOW);
+				set_state(STATE_PI, DIR_RIGHT);
 				break;
 			case DIR_FORWARD:
 				if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
 				{
-					float phaser = (float)atan(micRight_cmplx_input[2*max_index_r+1]/micRight_cmplx_input[2*max_index_r]);
-					float phasel = (float)atan(micLeft_cmplx_input[2*max_index_l+1]/micLeft_cmplx_input[2*max_index_l]);
-					float dephasage = phasel-phaser;
+					float dephasage = phase(max_index_r);
 					if(fabs(dephasage) <= 0.5)
 					{
-						chprintf((BaseSequentialStream *) &SD3, "dphase : %.3f\n\r", dephasage);
 						dephasage = round(dephasage*10);
-						chprintf((BaseSequentialStream *) &SD3, "round dphase : %.3f\n\r", dephasage);
+						//chprintf((BaseSequentialStream *) &SD3, "round dphase : %.3f\n\r", dephasage);
 						if(dephasage > 2 && old_phase == 0)
 						{
-							right_motor_set_speed(V_SLOW);
-							left_motor_set_speed(-V_SLOW);
+							set_state(STATE_PI, DIR_FORWARD);
+							set_phase(DIR_LEFT);
 							old_phase = 1;
 						}
 						else if(dephasage < -2 && old_phase == 0)
 						{
-							right_motor_set_speed(-V_SLOW);
-							left_motor_set_speed(V_SLOW);
+							set_state(STATE_PI, DIR_FORWARD);
+							set_phase(DIR_RIGHT);
 							old_phase = -1;
 						}
 						else if(dephasage <= 0 && old_phase == 1)
 						{
-							right_motor_set_speed(V_NULL);
-							left_motor_set_speed(V_NULL);
+							set_state(STATE_PI, DIR_FORWARD);
+							set_phase(DIR_FORWARD);
 							old_phase = 0;
 						}
 						else if(dephasage >= 0 && old_phase == -1)
 						{
-							right_motor_set_speed(V_NULL);
-							left_motor_set_speed(V_NULL);
+							set_state(STATE_PI, DIR_FORWARD);
+							set_phase(DIR_FORWARD);
 							old_phase = 0;
 						}
 					}
@@ -163,27 +159,22 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 			case DIR_BACKWARD:
 				if(max_norm_r >= max_norm_l)
 				{
-					right_motor_set_speed(-V_SLOW);
-					left_motor_set_speed(V_SLOW);
+					set_state(STATE_PI, DIR_RIGHT);
 				}
 				else
 				{
-					right_motor_set_speed(V_SLOW);
-					left_motor_set_speed(-V_SLOW);
+					set_state(STATE_PI, DIR_LEFT);
 				}
 				break;
 			case DIR_STOP:
-				right_motor_set_speed(V_NULL);
-				left_motor_set_speed(V_NULL);
+				set_state(STATE_PI, DIR_STOP);
 				break;
 		}
 	}
 	else
 	{
-		right_motor_set_speed(V_NULL);
-		left_motor_set_speed(V_NULL);
+		set_state(STATE_PI, DIR_STOP);
 	}
-
 }
 
 /*
