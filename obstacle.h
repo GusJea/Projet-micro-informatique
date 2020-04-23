@@ -24,10 +24,6 @@ void scan_obstacle(void);
 void ir_values(int* valeurs);
 
 //mesure la longueure de l'obstacle a gauche et droite
-/*
-void obstacle_length_left(uint16_t* left_side);
-void obstacle_length_right(uint16_t* right_side);
-*/
 uint16_t obstacle_length_left(void);
 uint16_t obstacle_length_right(void);
 
@@ -38,20 +34,12 @@ void direction_choose(uint16_t left_side, uint16_t right_side);
 //évite l'obstacle avec IRs
 void obj_ir_dodge(void);
 
-
+//sort d'un cul de sac
+void escape_dead_end(void);
 
 //bouge le robot a la vitesse speed_r/l jusqu'à pos_left/right aka le nbr de step
 void motor_turn(int speed_r, int speed_l, int32_t pos_right, int32_t pos_left);
 
 #endif /* OBSTACLE_H_ */
 
-/* osef
- *
-uint8_t obstacle_center(uint16_t d_0);
- *
-void motor_turn_obs(uint16_t pos_right, uint16_t pos_left);
- *
-commande une tour de 90 degrés dans la direction a suivre puis evite l'obstacle baleq
-void motor_command_obs_dodge(uint16_t* left_side, uint16_t* right_side);
- *
- */
+
