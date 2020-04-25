@@ -40,6 +40,8 @@ void escape_dead_end(void);
 //bouge le robot a la vitesse speed_r/l jusqu'à pos_left/right aka le nbr de step
 void motor_turn(int speed_r, int speed_l, int32_t pos_right, int32_t pos_left);
 
+uint16_t mm2steps(uint16_t millimeters);
+
 #endif /* OBSTACLE_H_ */
 
 
