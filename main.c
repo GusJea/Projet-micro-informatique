@@ -63,7 +63,7 @@ int main(void)
     //inits the motors
     motors_init();
     //init the pi regulator
-    pi_regulator_start();
+    //pi_regulator_start();
 
 #ifdef SEND_FROM_MIC
     //starts the microphones processing thread.

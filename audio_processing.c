@@ -29,21 +29,20 @@ static float micRight_output[FFT_SIZE];
 static float micFront_output[FFT_SIZE];
 static float micBack_output[FFT_SIZE];
 
-#define MIN_VALUE_THRESHOLD	30000
+#define MIN_VALUE_THRESHOLD	10000
 #define INIT_VALUE			-1
 
-#define FREQ_MIN		25	//Start scanning
-#define FREQ_SLOW		30	//467Hz
+#define FREQ_MIN		45	//Start scanning
 #define FREQ_FAST		50	//779Hz
 #define FREQ_MAX		55	//End scanning
 
-#define FREQ_SLOW_L		FREQ_SLOW-1
-#define FREQ_SLOW_H		FREQ_SLOW+1
 #define FREQ_FAST_L		FREQ_FAST-1
 #define FREQ_FAST_H		FREQ_FAST+1
 
-#define V_SLOW 			600
+#define V_SLOW 			900
 #define V_NULL			0
+
+#define INTENSITY_FRONT	55000
 
 static float ap_norm = MIN_VALUE_THRESHOLD;
 
@@ -51,7 +50,7 @@ static float ap_norm = MIN_VALUE_THRESHOLD;
 *	Simple function used to detect the highest value in a buffer
 *	and to execute a motor command depending on it
 */
-void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
+void sound_remote(float* dataR, float* dataL, float* dataF, float* dataB)
 {
 	float max_norm_r = MIN_VALUE_THRESHOLD;
 	float max_norm_l = MIN_VALUE_THRESHOLD;
@@ -61,9 +60,10 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 	int8_t max_index_r = INIT_VALUE;
 	int8_t max_index = INIT_VALUE;
 
-	int8_t direction = INIT_VALUE;
+	int8_t direction = DIR_STOP;
+	int16_t speed = V_SLOW;
 
-	//Search for the maximum sound intensity between the 2 frequencies we want to look at
+	//Search for the maximum sound intensity between the 4 mics to determine the direction and frequency peak
 	for(int i=FREQ_MIN; i <=FREQ_MAX; i++ )
 	{
 		//Maximum intensity and frequency peak of the right and left mics
@@ -74,7 +74,7 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 		}
 		if(dataR[i]>=max_norm_r)
 		{
-			max_norm_r=dataL[i];
+			max_norm_r=dataR[i];
 			max_index_r = i;
 		}
 
@@ -101,24 +101,36 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 		{
 			direction = DIR_BACKWARD;
 			max_index = i;
-			max_norm = dataL[i];
+			max_norm = dataB[i];
 		}
-		if(max_norm == MIN_VALUE_THRESHOLD || max_norm >= 1000000)
+		if(max_norm <= MIN_VALUE_THRESHOLD || max_norm >= 1000000)
 		{
 			direction = DIR_STOP;
 		}
-
 	}
+	//Set the new norm
+	ap_norm = max_norm;
+	//chprintf((BaseSequentialStream *) &SD3, "droite : %.3f\n\r", dataR[max_index]);
+	//chprintf((BaseSequentialStream *) &SD3, "gauche : %.3f\n\r", dataL[max_index]);
+	chprintf((BaseSequentialStream *) &SD3, "face : %.3f\n\r", dataF[max_index]);
+
 	//Motor command depending on the direction of the maximum intensity
 	if(max_index >= FREQ_FAST_L && max_index <= FREQ_FAST_H)
 	{
+
 		switch(direction)
 		{
 			case DIR_LEFT:
-				set_state(STATE_PI, DIR_LEFT);
+				//set_state(STATE_PI, DIR_LEFT);
+				right_motor_set_speed(speed);
+			    left_motor_set_speed(-speed);
+				chprintf((BaseSequentialStream *) &SD3, "gauche\n\r");
 				break;
 			case DIR_RIGHT:
-				set_state(STATE_PI, DIR_RIGHT);
+				//set_state(STATE_PI, DIR_RIGHT);
+				right_motor_set_speed(-speed);
+              	left_motor_set_speed(speed);
+				chprintf((BaseSequentialStream *) &SD3, "droite\n\r");
 				break;
 			case DIR_FORWARD:
 				if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
@@ -126,54 +138,72 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF)
 					float dephasage = phase(max_index_r);
 					if(fabs(dephasage) <= 0.5)
 					{
-						dephasage = round(dephasage*10);
-						//chprintf((BaseSequentialStream *) &SD3, "round dphase : %.3f\n\r", dephasage);
-						if(dephasage > 2 && old_phase == 0)
+						dephasage = round(dephasage*100);
+						if(dephasage > 15 && old_phase == 0)
 						{
-							set_state(STATE_PI, DIR_FORWARD);
-							set_phase(DIR_LEFT);
+							//set_state(STATE_PI, DIR_FORWARD);
+							//set_phase(DIR_LEFT);
+							right_motor_set_speed(speed+300);
+						  	left_motor_set_speed(speed-300);
 							old_phase = 1;
+							chprintf((BaseSequentialStream *) &SD3, "déphasage gauche\n\r");
 						}
-						else if(dephasage < -2 && old_phase == 0)
+						else if(dephasage < -15 && old_phase == 0)
 						{
-							set_state(STATE_PI, DIR_FORWARD);
-							set_phase(DIR_RIGHT);
+							//set_state(STATE_PI, DIR_FORWARD);
+							//set_phase(DIR_RIGHT);
+							right_motor_set_speed(speed-300);
+						  	left_motor_set_speed(speed+300);
 							old_phase = -1;
+							chprintf((BaseSequentialStream *) &SD3, "déphasage droite\n\r");
 						}
 						else if(dephasage <= 0 && old_phase == 1)
 						{
-							set_state(STATE_PI, DIR_FORWARD);
-							set_phase(DIR_FORWARD);
+							//set_state(STATE_PI, DIR_FORWARD);
+							//set_phase(DIR_FORWARD);
+							right_motor_set_speed(speed);
+						  	left_motor_set_speed(speed);
+							chprintf((BaseSequentialStream *) &SD3, "devant 1\n\r");
 							old_phase = 0;
 						}
 						else if(dephasage >= 0 && old_phase == -1)
 						{
-							set_state(STATE_PI, DIR_FORWARD);
-							set_phase(DIR_FORWARD);
+							//set_state(STATE_PI, DIR_FORWARD);
+							//set_phase(DIR_FORWARD);
+							right_motor_set_speed(speed);
+						  	left_motor_set_speed(speed);
+							chprintf((BaseSequentialStream *) &SD3, "devant 2\n\r");
 							old_phase = 0;
 						}
 					}
 				}
-
 				break;
 			case DIR_BACKWARD:
 				if(max_norm_r >= max_norm_l)
 				{
-					set_state(STATE_PI, DIR_RIGHT);
-				}
-				else
+					chprintf((BaseSequentialStream *) &SD3, "arrière droite\n\r");
+					right_motor_set_speed(-speed);
+		        	left_motor_set_speed(speed);
+				}else
 				{
-					set_state(STATE_PI, DIR_LEFT);
+					chprintf((BaseSequentialStream *) &SD3, "arrière gauche\n\r");
+					right_motor_set_speed(speed);
+	            	left_motor_set_speed(-speed);
 				}
 				break;
 			case DIR_STOP:
-				set_state(STATE_PI, DIR_STOP);
+				//set_state(STATE_PI, DIR_STOP);
+				chprintf((BaseSequentialStream *) &SD3, "stop\n\r");
+				right_motor_set_speed(V_NULL);
+			  	left_motor_set_speed(V_NULL);
 				break;
 		}
 	}
 	else
 	{
-		set_state(STATE_PI, DIR_STOP);
+		//set_state(STATE_PI, DIR_STOP);
+		right_motor_set_speed(V_NULL);
+	  	left_motor_set_speed(V_NULL);
 	}
 }
 
@@ -254,7 +284,7 @@ void processAudioData(int16_t *data, uint16_t num_samples){
 		nb_samples = 0;
 		//mustSend++;
 
-		sound_remote(micRight_output, micLeft_output, micBack_output, micFront_output);
+		sound_remote(micRight_output, micLeft_output, micFront_output, micBack_output);
 	}
 }
 
