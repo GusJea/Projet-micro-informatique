@@ -167,7 +167,7 @@ void center_IR()
 	int distance[IR_NUMBER] = {0};
 	ir_values(distance);
 
-	//aligné
+	//alignï¿½
 	if((distance[0] >= IR_CLOSE) && (distance[7] >= IR_CLOSE))
 	{
 		dodge_obs = CENTER;
@@ -408,7 +408,7 @@ void direction_choose(uint16_t left_side, uint16_t right_side)
  */
 void escape_dead_end(void)
 {
-	//vl..get_dist check, avancer de la valeur check, tourner du coté ou il y a pas l'obstracle de fond check,
+	//vl..get_dist check, avancer de la valeur check, tourner du cotï¿½ ou il y a pas l'obstracle de fond check,
 	//longer jusqu'au bord check, puis longer de nouveau
 	uint16_t distance_mur = VL53L0X_get_dist_mm()-5;
 	uint16_t step_2_go = mm2steps(distance_mur);
