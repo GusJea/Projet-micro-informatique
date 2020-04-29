@@ -41,6 +41,6 @@ float get_intensity(void);
 /*
  * 	Simple function to get the phase
  */
-float phase(int8_t index);
+float phase(int8_t index, int8_t state);
 
 #endif /* AUDIO_PROCESSING_H */

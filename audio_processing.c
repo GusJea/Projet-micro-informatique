@@ -16,7 +16,7 @@
 //semaphore
 static BSEMAPHORE_DECL(sendToComputer_sem, TRUE); // @suppress("Field cannot be resolved")
 
-static int8_t old_phase = 0;
+//static int8_t old_phase = 0;
 
 //2 times FFT_SIZE because these arrays contain complex numbers (real + imaginary)
 static float micLeft_cmplx_input[2 * FFT_SIZE];
@@ -39,12 +39,13 @@ static float micBack_output[FFT_SIZE];
 #define FREQ_FAST_L		FREQ_FAST-1
 #define FREQ_FAST_H		FREQ_FAST+1
 
-#define V_SLOW 			900
+#define V_SLOW 			600
 #define V_NULL			0
 
-#define INTENSITY_FRONT	55000
+#define FRONT_BACK		1
+#define LEFT_RIGHT		2
 
-static float ap_norm = MIN_VALUE_THRESHOLD;
+static 	int8_t old_phase = 0;
 
 /*
 *	Simple function used to detect the highest value in a buffer
@@ -54,156 +55,131 @@ void sound_remote(float* dataR, float* dataL, float* dataF, float* dataB)
 {
 	float max_norm_r = MIN_VALUE_THRESHOLD;
 	float max_norm_l = MIN_VALUE_THRESHOLD;
-	float max_norm = MIN_VALUE_THRESHOLD;
+	float max_norm_f = MIN_VALUE_THRESHOLD;
+	float max_norm_b = MIN_VALUE_THRESHOLD;
 
 	int8_t max_index_l = INIT_VALUE;
 	int8_t max_index_r = INIT_VALUE;
-	int8_t max_index = INIT_VALUE;
+	int8_t max_index_f = INIT_VALUE;
+	int8_t max_index_b = INIT_VALUE;
 
 	int8_t direction = DIR_STOP;
-	int16_t speed = V_SLOW;
 
 	//Search for the maximum sound intensity between the 4 mics to determine the direction and frequency peak
-	for(int i=FREQ_MIN; i <=FREQ_MAX; i++ )
+	for(int i=FREQ_MIN; i <=FREQ_MAX; i++)
 	{
 		//Maximum intensity and frequency peak of the right and left mics
 		if(dataL[i]>=max_norm_l)
 		{
 			max_norm_l=dataL[i];
-			max_index_l = i;
+			max_index_l=i;
 		}
 		if(dataR[i]>=max_norm_r)
 		{
 			max_norm_r=dataR[i];
-			max_index_r = i;
+			max_index_r=i;
 		}
-
-		//Maximum intensity and frequency peak of the 4 mics
-		if(dataL[i]>=max_norm)
+		if(dataF[i]>=max_norm_f)
 		{
-			direction = DIR_LEFT;
-			max_index = i;
-			max_norm = dataL[i];
+			max_norm_f=dataF[i];
+			max_index_f=i;
 		}
-		if(dataR[i]>=max_norm)
+		if(dataB[i]>=max_norm_b)
 		{
-			direction = DIR_RIGHT;
-			max_index = i;
-			max_norm = dataR[i];
-		}
-		if(dataF[i]>=max_norm)
-		{
-			direction = DIR_FORWARD;
-			max_index = i;
-			max_norm = dataF[i];
-		}
-		if(dataB[i]>=max_norm)
-		{
-			direction = DIR_BACKWARD;
-			max_index = i;
-			max_norm = dataB[i];
-		}
-		if(max_norm <= MIN_VALUE_THRESHOLD || max_norm >= 1000000)
-		{
-			direction = DIR_STOP;
+			max_norm_b=dataB[i];
+			max_index_b=i;
 		}
 	}
-	//Set the new norm
-	ap_norm = max_norm;
-	//chprintf((BaseSequentialStream *) &SD3, "droite : %.3f\n\r", dataR[max_index]);
-	//chprintf((BaseSequentialStream *) &SD3, "gauche : %.3f\n\r", dataL[max_index]);
-	chprintf((BaseSequentialStream *) &SD3, "face : %.3f\n\r", dataF[max_index]);
 
-	//Motor command depending on the direction of the maximum intensity
-	if(max_index >= FREQ_FAST_L && max_index <= FREQ_FAST_H)
+	float phase_lr = 0;
+	float phase_fb = 0;
+
+	//Get phase between front-back and left-right
+	if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
 	{
+		phase_lr = phase(max_index_l, LEFT_RIGHT);
+	}
+	if(max_index_f == max_index_b && max_index_f >= FREQ_FAST_L && max_index_f <= FREQ_FAST_H)
+	{
+		phase_fb = phase(max_index_f, FRONT_BACK);
+	}
 
-		switch(direction)
+	chprintf((BaseSequentialStream *) &SD3, "phase lr: %.3f\n\r", phase_lr);
+	chprintf((BaseSequentialStream *) &SD3, "phase fb: %.3f\n\r", phase_fb);
+
+
+	//Chose the direction
+	if(phase_fb > 0 && fabs(phase_fb) <= 2.0)
+	{
+		direction = DIR_FORWARD;
+	}
+	else if(phase_fb < 0 && fabs(phase_fb) <= 2.0)
+	{
+		direction = DIR_BACKWARD;
+	}
+
+	phase_lr = round(phase_lr*100);
+
+	//Command the motors
+	if(direction == DIR_BACKWARD)
+	{
+		if(phase_lr > 5 && fabs(phase_lr) <= 200.0)
 		{
-			case DIR_LEFT:
-				//set_state(STATE_PI, DIR_LEFT);
-				right_motor_set_speed(speed);
-			    left_motor_set_speed(-speed);
-				chprintf((BaseSequentialStream *) &SD3, "gauche\n\r");
-				break;
-			case DIR_RIGHT:
-				//set_state(STATE_PI, DIR_RIGHT);
-				right_motor_set_speed(-speed);
-              	left_motor_set_speed(speed);
-				chprintf((BaseSequentialStream *) &SD3, "droite\n\r");
-				break;
-			case DIR_FORWARD:
-				if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
-				{
-					float dephasage = phase(max_index_r);
-					if(fabs(dephasage) <= 0.5)
-					{
-						dephasage = round(dephasage*100);
-						if(dephasage > 15 && old_phase == 0)
-						{
-							//set_state(STATE_PI, DIR_FORWARD);
-							//set_phase(DIR_LEFT);
-							right_motor_set_speed(speed+300);
-						  	left_motor_set_speed(speed-300);
-							old_phase = 1;
-							chprintf((BaseSequentialStream *) &SD3, "déphasage gauche\n\r");
-						}
-						else if(dephasage < -15 && old_phase == 0)
-						{
-							//set_state(STATE_PI, DIR_FORWARD);
-							//set_phase(DIR_RIGHT);
-							right_motor_set_speed(speed-300);
-						  	left_motor_set_speed(speed+300);
-							old_phase = -1;
-							chprintf((BaseSequentialStream *) &SD3, "déphasage droite\n\r");
-						}
-						else if(dephasage <= 0 && old_phase == 1)
-						{
-							//set_state(STATE_PI, DIR_FORWARD);
-							//set_phase(DIR_FORWARD);
-							right_motor_set_speed(speed);
-						  	left_motor_set_speed(speed);
-							chprintf((BaseSequentialStream *) &SD3, "devant 1\n\r");
-							old_phase = 0;
-						}
-						else if(dephasage >= 0 && old_phase == -1)
-						{
-							//set_state(STATE_PI, DIR_FORWARD);
-							//set_phase(DIR_FORWARD);
-							right_motor_set_speed(speed);
-						  	left_motor_set_speed(speed);
-							chprintf((BaseSequentialStream *) &SD3, "devant 2\n\r");
-							old_phase = 0;
-						}
-					}
-				}
-				break;
-			case DIR_BACKWARD:
-				if(max_norm_r >= max_norm_l)
-				{
-					chprintf((BaseSequentialStream *) &SD3, "arrière droite\n\r");
-					right_motor_set_speed(-speed);
-		        	left_motor_set_speed(speed);
-				}else
-				{
-					chprintf((BaseSequentialStream *) &SD3, "arrière gauche\n\r");
-					right_motor_set_speed(speed);
-	            	left_motor_set_speed(-speed);
-				}
-				break;
-			case DIR_STOP:
-				//set_state(STATE_PI, DIR_STOP);
-				chprintf((BaseSequentialStream *) &SD3, "stop\n\r");
-				right_motor_set_speed(V_NULL);
-			  	left_motor_set_speed(V_NULL);
-				break;
+			right_motor_set_speed(V_SLOW);
+			left_motor_set_speed(-V_SLOW);
+			chprintf((BaseSequentialStream *) &SD3, "BACK LEFT\n\r");
+			old_phase = 1;
+		}
+		else if(phase_lr < -5 && fabs(phase_lr) <= 200.0)
+		{
+			right_motor_set_speed(-V_SLOW);
+			left_motor_set_speed(V_SLOW);
+			chprintf((BaseSequentialStream *) &SD3, "BACK RIGHT\n\r");
+			old_phase = -1;
 		}
 	}
-	else
+	else if(direction == DIR_FORWARD)
 	{
-		//set_state(STATE_PI, DIR_STOP);
+		if(fabs(phase_lr) <= 45 && fabs(phase_lr) <= 200)
+		{
+			if(phase_lr > 15 && old_phase == 0)
+			{
+				right_motor_set_speed(V_SLOW+300);
+				left_motor_set_speed(V_SLOW-300);
+				old_phase = 1;
+			}
+			else if(phase_lr < -15 && old_phase == 0)
+			{
+				right_motor_set_speed(V_SLOW-300);
+				left_motor_set_speed(V_SLOW+300);
+				old_phase = -1;
+			}
+			else
+			{
+				right_motor_set_speed(V_SLOW);
+				left_motor_set_speed(V_SLOW);
+				chprintf((BaseSequentialStream *) &SD3, "FRONT\n\r");
+				old_phase = 0;
+			}
+		}
+		else if(phase_lr > 45 && fabs(phase_lr) <= 200)
+		{
+			right_motor_set_speed(V_SLOW);
+			left_motor_set_speed(-V_SLOW);
+			chprintf((BaseSequentialStream *) &SD3, "LEFT\n\r");
+		}
+		else if(phase_lr < -45 && fabs(phase_lr) <= 200)
+		{
+			right_motor_set_speed(-V_SLOW);
+			left_motor_set_speed(V_SLOW);
+			chprintf((BaseSequentialStream *) &SD3, "RIGHT\n\r");
+		}
+	}
+
+	if(max_norm_f >= 1000000 || max_norm_f <= MIN_VALUE_THRESHOLD)
+	{
 		right_motor_set_speed(V_NULL);
-	  	left_motor_set_speed(V_NULL);
+		left_motor_set_speed(V_NULL);
 	}
 }
 
@@ -327,20 +303,32 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name)
 /*
  * 	Simple function to give the norm
  */
-float get_intensity()
+/*float get_intensity()
 {
 	return ap_norm;
-}
+}*/
 
 /*
  * 	Simple function to get the phase
  */
-float phase(int8_t index)
+float phase(int8_t index, int8_t state)
 {
-	float phase_right = 0;
-	float phase_left = 0;
-	phase_left = (float)atan(micLeft_cmplx_input[2*index+1]/micLeft_cmplx_input[2*index]);
-	phase_right =  (float)atan(micRight_cmplx_input[2*index+1]/micRight_cmplx_input[2*index]);
-	return (phase_left-phase_right);
+	float phase = 0;
+	if(state == LEFT_RIGHT)
+	{
+		float phase_right = 0;
+		float phase_left = 0;
+		phase_right = (float)atan(micRight_cmplx_input[2*index+1]/micRight_cmplx_input[2*index]);
+		phase_left = (float)atan(micLeft_cmplx_input[2*index+1]/micLeft_cmplx_input[2*index]);
+		phase = (phase_left-phase_right);
+	}
+	else if(state == FRONT_BACK)
+	{
+		float phase_front = 0;
+		float phase_back = 0;
+		phase_front = (float)atan(micFront_cmplx_input[2*index+1]/micFront_cmplx_input[2*index]);
+		phase_back = (float)atan(micBack_cmplx_input[2*index+1]/micBack_cmplx_input[2*index]);
+		phase = (phase_front-phase_back);
+	}
+	return phase;
 }
-
