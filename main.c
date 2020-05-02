@@ -16,9 +16,7 @@
 #include <communications.h>
 #include <arm_math.h>
 #include <pi_regulator.h>
-
-//uncomment to send the FFTs results from the real microphones
-#define SEND_FROM_MIC
+#include <obstacle.h>
 
 static void serial_start(void)
 {
@@ -62,21 +60,19 @@ int main(void)
     timer12_start();
     //inits the motors
     motors_init();
-    //init the pi regulator
-    //pi_regulator_start();
 
-#ifdef SEND_FROM_MIC
+    //init obstacles detection
+    sensor_init();
+    object_length_start();
+    object_detect_start();
+
     //starts the microphones processing thread.
     //it calls the callback given in parameter when samples are ready
     mic_start(&processAudioData);
-#endif  /* SEND_FROM_MIC */
 
     /* Infinite loop. */
     while (1) {
-#ifdef SEND_FROM_MIC
-        //waits until a result must be sent to the computer
-        //wait_send_to_computer();
-#endif  /* SEND_FROM_MIC */
+
     }
 }
 

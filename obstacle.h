@@ -42,4 +42,12 @@ void motor_turn(int speed_r, int speed_l, int32_t pos_right, int32_t pos_left);
 
 uint16_t mm2steps(uint16_t millimeters);
 
+void go_along_after_dodge(int* distance);
+
+void detect_left_obs(int* distance);
+
+void detect_right_obs(int* distance);
+
 #endif /* OBSTACLE_H_ */
+
+

@@ -29,8 +29,9 @@ static float micRight_output[FFT_SIZE];
 static float micFront_output[FFT_SIZE];
 static float micBack_output[FFT_SIZE];
 
-#define MIN_VALUE_THRESHOLD	10000
-#define INIT_VALUE			-1
+#define MIN_VALUE_THRESHOLD	30000
+#define MAX_VALUE_LIMIT		1000000
+#define INIT_VALUE			0
 
 #define FREQ_MIN		45	//Start scanning
 #define FREQ_FAST		50	//779Hz
@@ -39,13 +40,13 @@ static float micBack_output[FFT_SIZE];
 #define FREQ_FAST_L		FREQ_FAST-1
 #define FREQ_FAST_H		FREQ_FAST+1
 
-#define V_SLOW 			600
-#define V_NULL			0
-
 #define FRONT_BACK		1
 #define LEFT_RIGHT		2
 
 static 	int8_t old_phase = 0;
+static  int8_t dir_sound = DIR_STOP;
+static float coef_right = V_NULL;
+static float coef_left = V_NULL;
 
 /*
 *	Simple function used to detect the highest value in a buffer
@@ -94,93 +95,101 @@ void sound_remote(float* dataR, float* dataL, float* dataF, float* dataB)
 	float phase_lr = 0;
 	float phase_fb = 0;
 
-	//Get phase between front-back and left-right
-	if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
-	{
-		phase_lr = phase(max_index_l, LEFT_RIGHT);
-	}
-	if(max_index_f == max_index_b && max_index_f >= FREQ_FAST_L && max_index_f <= FREQ_FAST_H)
-	{
-		phase_fb = phase(max_index_f, FRONT_BACK);
-	}
-
-	chprintf((BaseSequentialStream *) &SD3, "phase lr: %.3f\n\r", phase_lr);
-	chprintf((BaseSequentialStream *) &SD3, "phase fb: %.3f\n\r", phase_fb);
-
-
-	//Chose the direction
-	if(phase_fb > 0 && fabs(phase_fb) <= 2.0)
-	{
-		direction = DIR_FORWARD;
-	}
-	else if(phase_fb < 0 && fabs(phase_fb) <= 2.0)
-	{
-		direction = DIR_BACKWARD;
-	}
-
-	phase_lr = round(phase_lr*100);
-
-	//Command the motors
-	if(direction == DIR_BACKWARD)
-	{
-		if(phase_lr > 5 && fabs(phase_lr) <= 200.0)
+	///////////////////////////////////////////////////////////////////////
+		//Get phase between front-back and left-right
+		if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
 		{
-			right_motor_set_speed(V_SLOW);
-			left_motor_set_speed(-V_SLOW);
-			chprintf((BaseSequentialStream *) &SD3, "BACK LEFT\n\r");
-			old_phase = 1;
+			phase_lr = phase(max_index_l, LEFT_RIGHT);
 		}
-		else if(phase_lr < -5 && fabs(phase_lr) <= 200.0)
+		if(max_index_f == max_index_b && max_index_f >= FREQ_FAST_L && max_index_f <= FREQ_FAST_H)
 		{
-			right_motor_set_speed(-V_SLOW);
-			left_motor_set_speed(V_SLOW);
-			chprintf((BaseSequentialStream *) &SD3, "BACK RIGHT\n\r");
-			old_phase = -1;
+			phase_fb = phase(max_index_f, FRONT_BACK);
 		}
-	}
-	else if(direction == DIR_FORWARD)
-	{
-		if(fabs(phase_lr) <= 45 && fabs(phase_lr) <= 200)
+
+		//chprintf((BaseSequentialStream *) &SD3, "phase fb: %.3f\n\r", phase_fb);
+
+
+		//Chose the direction
+		if(phase_fb > 0 && fabs(phase_fb) <= 2.0)
 		{
-			if(phase_lr > 15 && old_phase == 0)
+			direction = DIR_FORWARD;
+		}
+		else if(phase_fb < 0 && fabs(phase_fb) <= 2.0)
+		{
+			direction = DIR_BACKWARD;
+		}
+
+		phase_lr = round(phase_lr*100);
+
+		//Command the motors
+		if(direction == DIR_BACKWARD)
+		{
+			if(phase_lr > 5 && fabs(phase_lr) <= 200.0)
 			{
-				right_motor_set_speed(V_SLOW+300);
-				left_motor_set_speed(V_SLOW-300);
+				coef_right = SPEED_POS;
+				coef_left = SPEED_NEG;
+				//chprintf((BaseSequentialStream *) &SD3, "BACK LEFT\n\r");
 				old_phase = 1;
 			}
-			else if(phase_lr < -15 && old_phase == 0)
+			else if(phase_lr < -5 && fabs(phase_lr) <= 200.0)
 			{
-				right_motor_set_speed(V_SLOW-300);
-				left_motor_set_speed(V_SLOW+300);
+				coef_right = SPEED_NEG;
+				coef_left = SPEED_POS;
+				//chprintf((BaseSequentialStream *) &SD3, "BACK RIGHT\n\r");
 				old_phase = -1;
 			}
-			else
+			dir_sound = DIR_BACKWARD;
+		}
+		else if(direction == DIR_FORWARD)
+		{
+			if(fabs(phase_lr) <= 45 && fabs(phase_lr) <= 200)
 			{
-				right_motor_set_speed(V_SLOW);
-				left_motor_set_speed(V_SLOW);
-				chprintf((BaseSequentialStream *) &SD3, "FRONT\n\r");
-				old_phase = 0;
+				if(phase_lr > 15 && old_phase == 0)
+				{
+					coef_right = SPEED_F_POS;
+					coef_left = SPEED_F_NEG;
+					old_phase = 1;
+					dir_sound = DIR_LEFT;
+				}
+				else if(phase_lr < -15 && old_phase == 0)
+				{
+					coef_right = SPEED_F_NEG;
+					coef_left = SPEED_F_POS;
+					old_phase = -1;
+					dir_sound = DIR_RIGHT;
+				}
+				else
+				{
+					coef_right = SPEED_POS;
+					coef_left = SPEED_POS;
+					//chprintf((BaseSequentialStream *) &SD3, "FRONT\n\r");
+					old_phase = 0;
+					dir_sound = DIR_FORWARD;
+				}
+			}
+			else if(phase_lr > 45 && fabs(phase_lr) <= 200)
+			{
+				coef_right = SPEED_POS;
+				coef_left = SPEED_NEG;
+				dir_sound = DIR_LEFT;
+				//chprintf((BaseSequentialStream *) &SD3, "LEFT\n\r");
+			}
+			else if(phase_lr < -45 && fabs(phase_lr) <= 200)
+			{
+				coef_right = SPEED_NEG;
+				coef_left = SPEED_POS;
+				dir_sound = DIR_RIGHT;
+				//chprintf((BaseSequentialStream *) &SD3, "RIGHT\n\r");
 			}
 		}
-		else if(phase_lr > 45 && fabs(phase_lr) <= 200)
-		{
-			right_motor_set_speed(V_SLOW);
-			left_motor_set_speed(-V_SLOW);
-			chprintf((BaseSequentialStream *) &SD3, "LEFT\n\r");
-		}
-		else if(phase_lr < -45 && fabs(phase_lr) <= 200)
-		{
-			right_motor_set_speed(-V_SLOW);
-			left_motor_set_speed(V_SLOW);
-			chprintf((BaseSequentialStream *) &SD3, "RIGHT\n\r");
-		}
-	}
-
-	if(max_norm_f >= 1000000 || max_norm_f <= MIN_VALUE_THRESHOLD)
+		///////////////////////////////////////////////////////////////
+	if(max_norm_f >= MAX_VALUE_LIMIT || max_norm_f <= MIN_VALUE_THRESHOLD)
 	{
-		right_motor_set_speed(V_NULL);
-		left_motor_set_speed(V_NULL);
+		coef_right = V_NULL;
+		coef_left = V_NULL;
+		dir_sound = DIR_STOP;
 	}
+	motor_command(coef_right, coef_left);
 }
 
 /*
@@ -301,14 +310,6 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name)
 }
 
 /*
- * 	Simple function to give the norm
- */
-/*float get_intensity()
-{
-	return ap_norm;
-}*/
-
-/*
  * 	Simple function to get the phase
  */
 float phase(int8_t index, int8_t state)
@@ -331,4 +332,18 @@ float phase(int8_t index, int8_t state)
 		phase = (phase_front-phase_back);
 	}
 	return phase;
+}
+
+/*
+ * 	Function to set the speed to the motors
+ */
+void motor_command(float coef_r, float coef_l)
+{
+	right_motor_set_speed(coef_r*V_SLOW);
+	left_motor_set_speed(coef_l*V_SLOW);
+}
+
+int8_t get_dir_sound()
+{
+	return dir_sound;
 }
