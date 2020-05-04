@@ -49,6 +49,7 @@ CONDVAR_DECL(bus_condvar);
 #define IR_CLOSE_R			3500
 #define IR_MID_DIST			400
 #define	IR_FAR				70
+#define IR_COUNTER			25
 
 #define PERIMETER			130
 #define NB_STEP				1000
@@ -81,7 +82,6 @@ static THD_FUNCTION(DetectObjet, arg)
 	{
 		/*ir_values(test);
 		chprintf((BaseSequentialStream *) &SD3, "----------------------\n\r");
-
 		chprintf((BaseSequentialStream *) &SD3, "ir 0: %d\n\r", test[0]);
 		chprintf((BaseSequentialStream *) &SD3, "ir 7: %d\n\r", test[7]);*/
 
@@ -104,17 +104,21 @@ static THD_FUNCTION(DetectObjet_IR, arg)
 
 	while (1)
 	{
-		if(dodge_obs == TO_CENTER)
+		//counter_ir++;
+		if(dodge_obs == TO_CENTER)// && counter_ir == IR_COUNTER)
 		{
 			center_IR();
+			//counter_ir = 0;
 		}
-		else if(dodge_obs == IDLE)
+		else if(dodge_obs == IDLE)// && counter_ir == IR_COUNTER)
 		{
 			detect_IR();
+			//counter_ir = 0;
 		}
 		else if(go_along)
 		{
 			obj_ir_dodge();
+			//counter_ir = 0;
 		}
 		chThdSleepMilliseconds(1);
 	}
@@ -149,7 +153,7 @@ void detect_IR()
 	ir_values(distance);
 	counter_ir++;
 
-	if((distance[7] >= IR_MID_DIST || distance[6] >= IR_MID_DIST || distance[5] >= IR_MID_DIST) && counter_ir == 25)
+	if((distance[7] >= IR_MID_DIST || distance[6] >= IR_MID_DIST || distance[5] >= IR_MID_DIST) && counter_ir == IR_COUNTER)
 	{
 		dodge_obs = S_RIGHT;
 		detect_left_obs(distance);
@@ -162,7 +166,7 @@ void detect_IR()
 		dodge_obs = IDLE;
 		counter_ir = 0;
 	}
-	else if((distance[0] >= IR_MID_DIST || distance[1] >= IR_MID_DIST || distance[2] >= IR_MID_DIST) && counter_ir == 25)
+	else if((distance[0] >= IR_MID_DIST || distance[1] >= IR_MID_DIST || distance[2] >= IR_MID_DIST) && counter_ir == IR_COUNTER)
 	{
 		dodge_obs = S_LEFT;
 		detect_right_obs(distance);
@@ -192,22 +196,6 @@ void center_IR()
 		left_motor_set_speed(0);
 		right_motor_set_speed(0);
 	}
-	//dans un bord d'objet qui est a la droite du robot
-	/*else if(distance[0] >= IR_CLOSE && distance[7] < IR_FAR)
-	{
-		motor_turn(-DODGE_SPEED	, DODGE_SPEED, QUAT_TURN, QUAT_TURN);
-		motor_turn(DODGE_SPEED	, DODGE_SPEED, mm2steps(R_EPCUK_ROUND), mm2steps(R_EPCUK_ROUND));
-		go_along= 0;
-		dodge_obs=IDLE;
-	}
-	//dans un bord d'objet qui est a la gauche du robot
-	else if(distance[7] >= IR_CLOSE && distance[0] < IR_FAR)
-	{
-		motor_turn(DODGE_SPEED	, -DODGE_SPEED, QUAT_TURN, QUAT_TURN);
-		motor_turn(DODGE_SPEED	, DODGE_SPEED, mm2steps(R_EPCUK_ROUND), mm2steps(R_EPCUK_ROUND));
-		go_along= 0;
-		dodge_obs=IDLE;
-	}*/
 	//trop a gauche
 	else if(distance[0] >= IR_CLOSE_R || distance[1] >= IR_MID_DIST)
 	{
@@ -575,12 +563,6 @@ void detect_left_obs(int* distance)
 	}
 	else
 	{
-		chprintf((BaseSequentialStream *) &SD3, "distance 5: %d\n\r", distance[5]);
-		chprintf((BaseSequentialStream *) &SD3, "distance 6: %d\n\r", distance[6]);
-		chprintf((BaseSequentialStream *) &SD3, "distance 7: %d\n\r", distance[7]);
-		chprintf((BaseSequentialStream *) &SD3, "------------------------ %d\n\r");
-
-
 		motor_turn(-DODGE_SPEED, DODGE_SPEED, 45*ONE_DEG, 45*ONE_DEG);
 		dodge_obs = ESCAPE;
 	}
@@ -599,4 +581,3 @@ void detect_right_obs(int* distance)
 		dodge_obs = ESCAPE;
 	}
 }
-
