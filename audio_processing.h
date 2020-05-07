@@ -56,6 +56,9 @@ float phase(int8_t index, int8_t state);
  */
 void motor_command(float coef_r, float coef_l);
 
+/*
+ * 	Function to get the direction the sound comes from
+ */
 int8_t get_dir_sound(void);
 
 #endif /* AUDIO_PROCESSING_H */
