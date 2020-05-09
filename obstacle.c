@@ -11,6 +11,8 @@
 #include <chprintf.h>
 #include <audio_processing.h>
 #include "msgbus/messagebus.h"
+#include "arm_math.h"
+#include "arm_common_tables.h"
 
 messagebus_t bus;
 MUTEX_DECL(bus_lock);
@@ -18,39 +20,53 @@ CONDVAR_DECL(bus_condvar);
 
 #define	DIST_STOP_LONG		300
 #define	DIST_STOP_SHORT		150
-#define IR_NUMBER			8 // de 0 a 7 donc 8 sensor
-#define TAN(x)				tan(x)
-#define SIN(x)				sin(x)
-#define ACOS(x)				acos(x)
+#define R_EPUCK				37.5
+#define PERIMETER			130
+#define NB_STEP				1000
+#define NBR_MOT				2
+#define MOT_L				0
+#define MOT_R				1
 #define DEG2RAD				M_PI/180
+#define	DEG_MAX				90
 
-#define S_LEFT				1
-#define	S_RIGHT 			2
+#define ON					1
+#define	OFF					0
 #define ESCAPE				3
-#define ESCAPE_2			7
 #define TO_CENTER			4
 #define CENTER				5
 #define IDLE				6
 
-#define STEP_ADD_TOUR		5
-
 #define ONE_DEG				4
 #define QUAT_TURN			320
 #define HALF_TURN			640
+#define STEP_CORRECTION		210
+
 #define DODGE_SPEED			400
 #define MIN_SPEED			326
-#define CLOSE_OBS			400
-#define R_EPUCK				37.5
+#define	ESCAPE_SPEED		290
 
+#define CLOSE_OBS			400
+#define POS_DODGE			380
+
+#define TOF_CORRECTION		5
+
+#define IR_NUMBER			8
 #define IR_CLOSE_L			3400
 #define IR_CLOSE_R			3500
 #define IR_MID_DIST			400
 #define	IR_FAR				70
 #define IR_COUNTER			25
+#define IR_CORRECTION		10
 
-#define PERIMETER			130
-#define NB_STEP				1000
-#define CORRECTION			210
+#define	RIGHT_FRONT_IR_SENS	0
+#define	RIGHT_45_IR_SENS	1
+#define	RIGHT_IR_SENS		2
+#define	RIGHT_BACK_IR_SENS	3
+
+#define	LEFT_BACK_IR_SENS	4
+#define	LEFT_IR_SENS		5
+#define	LEFT_45_IR_SENS		6
+#define	LEFT_FRONT_IR_SENS	7
 
 static uint8_t				dodge_obs = IDLE;
 static uint8_t				go_along = 0;
@@ -59,6 +75,9 @@ static uint16_t				old_ir = IR_MID_DIST;
 static int8_t				counter_ir = 0;
 static int8_t 				obstacle_ir = 0;
 
+/*
+ * @brief				initialize the IR sensor and the TOF sensor
+ */
 void sensor_init()
 {
 	//TOF
@@ -70,18 +89,18 @@ void sensor_init()
 	calibrate_ir();
 }
 
+
+/*
+ * @brief				thread handling the TOF detection
+ */
 static THD_WORKING_AREA(waDetectObjet, 1024);
 static THD_FUNCTION(DetectObjet, arg)
 {
 	chRegSetThreadName(__FUNCTION__);
 	(void) arg;
-	//int test[8] = {0};
+
 	while (1)
 	{
-		/*ir_values(test);
-		chprintf((BaseSequentialStream *) &SD3, "----------------------\n\r");
-		chprintf((BaseSequentialStream *) &SD3, "ir 2: %d\n\r", test[2]);
-		chprintf((BaseSequentialStream *) &SD3, "ir 5: %d\n\r", test[5]);*/
 		scan_obstacle();
 		chThdSleepMilliseconds(10);
 	}
@@ -93,6 +112,11 @@ void object_length_start()
 	chThdCreateStatic(waDetectObjet, sizeof(waDetectObjet), NORMALPRIO+1, DetectObjet, NULL);
 }
 
+/*
+ * @brief				thread handling the IR sensor
+ * 						The counter_ir is there to slow down the frequency of ir
+ * 						measurement because the ir sensor frequency is lower than thread call
+ */
 static THD_WORKING_AREA(waDetectObjet_IR, 256);
 static THD_FUNCTION(DetectObjet_IR, arg)
 {
@@ -102,20 +126,20 @@ static THD_FUNCTION(DetectObjet_IR, arg)
 	while (1)
 	{
 		counter_ir++;
-		if(dodge_obs == TO_CENTER && counter_ir >= IR_COUNTER-10)
+		if(dodge_obs == TO_CENTER && counter_ir >= IR_COUNTER-IR_CORRECTION)
 		{
 			center_IR();
-			counter_ir = 0;
+			counter_ir = OFF;
 		}
 		else if(dodge_obs == IDLE && (counter_ir >= IR_COUNTER || obstacle_ir))
 		{
 			detect_IR();
-			counter_ir = 0;
+			counter_ir = OFF;
 		}
 		else if(go_along)
 		{
 			obj_ir_dodge();
-			counter_ir = 0;
+			counter_ir = OFF;
 		}
 		chThdSleepMilliseconds(1);
 	}
@@ -127,9 +151,9 @@ void object_detect_start()
 }
 
 /*
- * @brief get the IR sensor values
+ * @brief 				get the IR sensor values
  *
- * @param	valeurs value mesured by the sensor
+ * @param	valeurs 	value mesured by the sensor
  */
 void ir_values(int* valeurs)
 {
@@ -140,38 +164,39 @@ void ir_values(int* valeurs)
 }
 
 /*
- * @brief 	store the IR sensor values in distance table and then compare them
+ * @brief 				store the IR sensor values in distance table and then compare them
  *
  */
 void detect_IR()
 {
 	if(get_dir_sound() != DIR_STOP)
 	{
-		int distance[IR_NUMBER] = {0};
+		int distance[IR_NUMBER] = {OFF};
 		ir_values(distance);
-		if((distance[7] >= IR_MID_DIST || distance[6] >= IR_MID_DIST || distance[5] >= IR_MID_DIST))
+
+		if((distance[LEFT_FRONT_IR_SENS] >= IR_MID_DIST || distance[LEFT_45_IR_SENS] >= IR_MID_DIST || distance[LEFT_IR_SENS] >= IR_MID_DIST))
 		{
-			dodge_obs = S_RIGHT;
+			dodge_obs = DIR_RIGHT;
 			detect_left_obs(distance);
 			if(dodge_obs == ESCAPE)
 			{
 				motor_turn(DODGE_SPEED, DODGE_SPEED, mm2steps(R_EPUCK), mm2steps(R_EPUCK));
 				old_ir = IR_MID_DIST;
-				go_along = 0;
-				obstacle_ir = 0;
+				go_along = OFF;
+				obstacle_ir = OFF;
 			}
 			dodge_obs = IDLE;
 		}
-		else if((distance[0] >= IR_MID_DIST || distance[1] >= IR_MID_DIST || distance[2] >= IR_MID_DIST - 100))
+		else if((distance[RIGHT_FRONT_IR_SENS] >= IR_MID_DIST || distance[RIGHT_45_IR_SENS] >= IR_MID_DIST || distance[RIGHT_IR_SENS] >= IR_MID_DIST - 10*IR_CORRECTION))
 		{
-			dodge_obs = S_LEFT;
+			dodge_obs = DIR_LEFT;
 			detect_right_obs(distance);
 			if(dodge_obs == ESCAPE)
 			{
-				motor_turn(DODGE_SPEED, DODGE_SPEED, 380, 380);
+				motor_turn(DODGE_SPEED, DODGE_SPEED, POS_DODGE, POS_DODGE);
 				old_ir = IR_MID_DIST;
-				go_along = 0;
-				obstacle_ir = 0;
+				go_along = OFF;
+				obstacle_ir = OFF;
 			}
 			dodge_obs = IDLE;
 		}
@@ -179,79 +204,90 @@ void detect_IR()
 }
 
 /*
- * @brief center the epuck with IR sensor in order to be perpendicular to the object to avoid
+ * @brief 				center the epuck with IR sensor in order to be perpendicular to the object to avoid
  */
 void center_IR()
 {
 	if(get_dir_sound()!=DIR_STOP)
 	{
-		int distance[IR_NUMBER] = {0};
+		int distance[IR_NUMBER] = {OFF};
 		ir_values(distance);
-		//align�
-		if((distance[0] >= IR_CLOSE_L) && (distance[7] >= IR_CLOSE_R))
+
+		//the epuck is align
+		if((distance[RIGHT_FRONT_IR_SENS] >= IR_CLOSE_L) && (distance[LEFT_FRONT_IR_SENS] >= IR_CLOSE_R))
 		{
 			dodge_obs = CENTER;
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
-			//counter_ir = 0;
+			left_motor_set_speed(V_NULL);
+			right_motor_set_speed(V_NULL);
 		}
-		//trop a gauche
-		else if((distance[0] >= IR_CLOSE_R || distance[1] >= IR_MID_DIST))
+
+		//epuck is too much on the left side
+		else if((distance[RIGHT_FRONT_IR_SENS] >= IR_CLOSE_R || distance[RIGHT_45_IR_SENS] >= IR_MID_DIST))
 		{
 			motor_turn(-MIN_SPEED, MIN_SPEED, ONE_DEG,ONE_DEG);
 		}
-		//trop a droite
-		else if((distance[7] >= IR_CLOSE_L || distance[6] >= IR_MID_DIST))
+
+		//epuck is too much on the right side
+		else if((distance[LEFT_FRONT_IR_SENS] >= IR_CLOSE_L || distance[LEFT_45_IR_SENS] >= IR_MID_DIST))
 		{
 			motor_turn(MIN_SPEED, -MIN_SPEED, ONE_DEG, ONE_DEG);
 		}
-		else if(VL53L0X_get_dist_mm() >= (DIST_STOP_SHORT/3) && (distance[7] >= IR_MID_DIST || distance [0] >= IR_MID_DIST))
+
+		//if the epuck is on the corner, need to use detect_ir and no more center_ir
+		else if(VL53L0X_get_dist_mm() >= (DIST_STOP_SHORT/3) && (distance[LEFT_FRONT_IR_SENS] >= IR_MID_DIST || distance [RIGHT_FRONT_IR_SENS] >= IR_MID_DIST))
 		{
 			dodge_obs = IDLE;
 		}
+
+		//go forward while the object is far
 		else
 			motor_turn(MIN_SPEED, MIN_SPEED, ONE_DEG, ONE_DEG);
 	}
 }
 
 /*
- * @brief main function of the object scan and mesurment withg the TOF sensor.
+ * @brief 				main function of the object scan and mesurment withg the TOF sensor.
  */
 void scan_obstacle()
 {
 	if(get_dir_sound() != DIR_STOP)
 	{
 		uint16_t distance_mm = VL53L0X_get_dist_mm();
-		int IR_values[IR_NUMBER] = {0};
+		int IR_values[IR_NUMBER] = {OFF};
 		ir_values(IR_values);
-		//chprintf((BaseSequentialStream *) &SD3, "distance: %d\n\r", distance_mm);
 
 		if(distance_mm <= DIST_STOP_SHORT && distance_mm)
 		{
-			obstacle_ir = 0;
+			obstacle_ir = OFF;
+
+			//first detection
 			if(dodge_obs == IDLE)
 			{
 				dodge_obs = TO_CENTER;
 			}
+			//already center, then proceed to measure it
 			else if(dodge_obs == CENTER && !go_along)
 			{
 				while(distance_mm < DIST_STOP_SHORT)
 				{
 					ir_values(IR_values);
-					if(IR_values[3] >= IR_MID_DIST && IR_values[4] >= IR_MID_DIST)
+
+					if(IR_values[LEFT_FRONT_IR_SENS] >= IR_MID_DIST && IR_values[LEFT_BACK_IR_SENS] >= IR_MID_DIST)
 					{
 						break;
 					}
 					motor_turn(-MIN_SPEED, -MIN_SPEED, ONE_DEG, ONE_DEG);
 					distance_mm = VL53L0X_get_dist_mm();
 				}
+
 				length=distance_mm;
 				direction_choose(obstacle_length_left(),obstacle_length_right());
 			}
+			//already going along the object
 			else if(go_along)
 			{
 				dodge_obs = TO_CENTER;
-				go_along = 0;
+				go_along = OFF;
 			}
 		}
 		else if(distance_mm > DIST_STOP_LONG && !go_along)
@@ -259,6 +295,7 @@ void scan_obstacle()
 			old_ir = IR_MID_DIST;
 			dodge_obs = IDLE;
 		}
+		//dodge a little bit if the epuck is far from the obstacle
 		else if(distance_mm <= DIST_STOP_LONG && distance_mm)
 		{
 			if(get_dir_sound() == DIR_LEFT || get_dir_sound() == DIR_FORWARD)
@@ -269,30 +306,32 @@ void scan_obstacle()
 			{
 				motor_turn(-V_SLOW, V_SLOW, 2*ONE_DEG, 2*ONE_DEG);
 			}
-			motor_turn(V_SLOW, V_SLOW, mm2steps(50), mm2steps(50));
+			// atst motor_turn(V_SLOW, V_SLOW, mm2steps(50), mm2steps(50));
+			motor_turn(V_SLOW, V_SLOW, POS_DODGE, POS_DODGE);
 		}
 	}
 }
 
 /*
- * @brief	measure the right length of the object to avoid
+ * @brief				measure the right length of the object to avoid
  *
  * @param	return the right length
  */
 uint16_t obstacle_length_right(void)
 {
-	uint16_t return_value[2] = {0}; //left 0 right 1
-	double ob_leng_TOF_mm = 0;
-	double ob_leng_mm = 0;
-	for(uint8_t i = 1; i<90; i++)
+	uint16_t return_value[NBR_MOT] = {OFF};
+	float32_t ob_leng_TOF_mm = OFF;
+	float32_t ob_leng_mm = OFF;
+	for(uint8_t i = 1; i<DEG_MAX; i++)
 	{
 
 		motor_turn(-MIN_SPEED, MIN_SPEED, ONE_DEG,ONE_DEG);
-		return_value[0] += left_motor_get_pos();
-		return_value[1] += right_motor_get_pos();
+		return_value[MOT_L] += left_motor_get_pos();
+		return_value[MOT_R] += right_motor_get_pos();
 
-		ob_leng_TOF_mm = sin(i*DEG2RAD)*((double)(VL53L0X_get_dist_mm()));
-		ob_leng_mm = tan(i*DEG2RAD)*((double)(length)+R_EPUCK);
+		ob_leng_TOF_mm = arm_sin_f32(i*DEG2RAD)*((float32_t)(VL53L0X_get_dist_mm()));
+		float32_t	tan_i = arm_sin_f32(i*DEG2RAD)/arm_cos_f32(i*DEG2RAD);
+		ob_leng_mm = tan_i*((float32_t)(length)+R_EPUCK);
 
 		if(ob_leng_TOF_mm > ob_leng_mm)
 		{
@@ -300,15 +339,15 @@ uint16_t obstacle_length_right(void)
 		}
 	}
 
-	right_motor_set_pos(return_value[1]);
-	left_motor_set_pos(return_value[0]);
+	right_motor_set_pos(return_value[MOT_R]);
+	left_motor_set_pos(return_value[MOT_L]);
 
 	while(1)
 	{
-				if((right_motor_get_pos() > 0) && (left_motor_get_pos() < 0))
+				if((right_motor_get_pos() > OFF) && (left_motor_get_pos() < OFF))
 				{
-					left_motor_set_speed(0);
-					right_motor_set_speed(0);
+					left_motor_set_speed(V_NULL);
+					right_motor_set_speed(V_NULL);
 					break;
 				}
 				else
@@ -321,25 +360,25 @@ uint16_t obstacle_length_right(void)
 }
 
 /*
- * @brief	measure the left length of the object to avoid
+ * @brief				measure the left length of the object to avoid
  *
- * @param	return the left length
  */
 
 uint16_t obstacle_length_left(void)
 {
-	uint16_t return_value[2] = {0}; //left 0 right 1
-	double ob_leng_TOF_mm = 0;
-	double ob_leng_mm = 0;
-	for(uint8_t i = 1; i<90; i++)
+	uint16_t return_value[NBR_MOT] = {OFF};
+	float32_t ob_leng_TOF_mm = OFF;
+	float32_t ob_leng_mm = OFF;
+	for(uint8_t i = 1; i<DEG_MAX; i++)
 	{
 
 		motor_turn(MIN_SPEED, -MIN_SPEED, ONE_DEG,ONE_DEG);
-		return_value[0] += left_motor_get_pos();
-		return_value[1] += right_motor_get_pos();
+		return_value[MOT_L] += left_motor_get_pos();
+		return_value[MOT_R] += right_motor_get_pos();
 
-		ob_leng_TOF_mm = sin(i*DEG2RAD)*((double)(VL53L0X_get_dist_mm()));
-		ob_leng_mm = tan(i*DEG2RAD)*((double)(length)+R_EPUCK);
+		ob_leng_TOF_mm = arm_sin_f32(i*DEG2RAD)*((float32_t)(VL53L0X_get_dist_mm()));
+		float32_t	tan_i = arm_sin_f32(i*DEG2RAD)/arm_cos_f32(i*DEG2RAD);
+		ob_leng_mm = tan_i*((float32_t)(length)+R_EPUCK);
 
 		if(ob_leng_TOF_mm > ob_leng_mm)
 		{
@@ -347,15 +386,16 @@ uint16_t obstacle_length_left(void)
 		}
 	}
 
-	right_motor_set_pos(return_value[1]);
-	left_motor_set_pos(return_value[0]);
+	right_motor_set_pos(return_value[MOT_R]);
+	left_motor_set_pos(return_value[MOT_L]);
 
 	while(1)
 	{
-		if((right_motor_get_pos() < -7) && (left_motor_get_pos() > 7))
+		// atst ptit doute pour le -2*on deg car c'est 8 et non 7 comme avant
+		if((right_motor_get_pos() < -2*ONE_DEG) && (left_motor_get_pos() > 2*ONE_DEG))
 		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
+			left_motor_set_speed(V_NULL);
+			right_motor_set_speed(V_NULL);
 			break;
 		}
 		else
@@ -368,7 +408,7 @@ uint16_t obstacle_length_left(void)
 }
 
 /*
- * @brief	choose which direction to go and start to avoid the object.
+ * @brief				choose which direction to go and start to avoid the object.
  * 						Also make sure the epuck can avoid the obstacle without beeing blocked by another object on the right/left
  *
  * @pram left_side 		length of the left side of the object
@@ -376,23 +416,23 @@ uint16_t obstacle_length_left(void)
  */
 void direction_choose(uint16_t left_side, uint16_t right_side)
 {
-	motor_turn(DODGE_SPEED, DODGE_SPEED, mm2steps(length)-CORRECTION, mm2steps(length)-CORRECTION);
+	motor_turn(DODGE_SPEED, DODGE_SPEED, mm2steps(length)-STEP_CORRECTION, mm2steps(length)-STEP_CORRECTION);
 
 	if(left_side > right_side)
 	{
-		dodge_obs = S_RIGHT;
+		dodge_obs = DIR_RIGHT;
 		motor_turn(-DODGE_SPEED, DODGE_SPEED, QUAT_TURN,QUAT_TURN);
 		if(VL53L0X_get_dist_mm()>=(right_side+2*R_EPUCK))
 		{
-			go_along = 1;
+			go_along = DIR_RIGHT;
 		}
 		else
 		{
 			motor_turn(DODGE_SPEED, -DODGE_SPEED, HALF_TURN,HALF_TURN);
 			if(VL53L0X_get_dist_mm()>=(left_side+2*R_EPUCK))
 			{
-				dodge_obs = S_LEFT;
-				go_along = 1;
+				dodge_obs = DIR_LEFT;
+				go_along = DIR_LEFT;
 			}
 			else
 			{
@@ -403,19 +443,20 @@ void direction_choose(uint16_t left_side, uint16_t right_side)
 	}
 	else if(left_side <= right_side)
 	{
-		dodge_obs = S_LEFT;
-		motor_turn(DODGE_SPEED, -DODGE_SPEED, QUAT_TURN-7,QUAT_TURN-7);
+		dodge_obs = DIR_LEFT;
+		// atst motor_turn(DODGE_SPEED, -DODGE_SPEED, QUAT_TURN-7,QUAT_TURN-7);
+		motor_turn(DODGE_SPEED, -DODGE_SPEED, QUAT_TURN-2*ONE_DEG,QUAT_TURN-2*ONE_DEG);
 		if(VL53L0X_get_dist_mm()>=(left_side+2*R_EPUCK))
 		{
-			go_along = 1;
+			go_along = DIR_LEFT;
 		}
 		else
 		{
 			motor_turn(-DODGE_SPEED, DODGE_SPEED, HALF_TURN,HALF_TURN);
 			if(VL53L0X_get_dist_mm()>=(right_side+2*R_EPUCK))
 			{
-				dodge_obs = S_RIGHT;
-				go_along = 1;
+				dodge_obs = DIR_RIGHT;
+				go_along = DIR_RIGHT;
 			}
 			else
 			{
@@ -427,29 +468,28 @@ void direction_choose(uint16_t left_side, uint16_t right_side)
 }
 
 /*
- * @brief	"save" if the epuck is stuk in a dead end by avoiding it
+ * @brief				"save" if the epuck is stuk in a dead end by avoiding it
  */
 void escape_dead_end(void)
 {
-	//vl..get_dist check, avancer de la valeur check, tourner du cot� ou il y a pas l'obstracle de fond check,
-	//longer jusqu'au bord check, puis longer de nouveau
-	uint16_t distance_mur = VL53L0X_get_dist_mm()-5;
+	uint16_t distance_mur = VL53L0X_get_dist_mm()-TOF_CORRECTION;
 	uint16_t step_2_go = mm2steps(distance_mur);
+
 	motor_turn(DODGE_SPEED, DODGE_SPEED, step_2_go, step_2_go);
-	if(dodge_obs == S_RIGHT)
+	if(dodge_obs == DIR_RIGHT)
 	{
 		motor_turn(-DODGE_SPEED, DODGE_SPEED, QUAT_TURN,QUAT_TURN);
-		go_along = 1;
+		go_along = DIR_RIGHT;
 	}
-	else if(dodge_obs == S_LEFT)
+	else if(dodge_obs == DIR_LEFT)
 	{
 		motor_turn(DODGE_SPEED, -DODGE_SPEED, QUAT_TURN,QUAT_TURN);
-		go_along = 1;
+		go_along = DIR_LEFT;
 	}
 }
 
 /*
- *	@brief	 move the eupck at a fixed speed to a cetrain position
+ *	@brief	 			move the eupck at a fixed speed to a cetrain position
  *
  *	@param speed_r		set the right motor speed
  *	@param speed_l		set the left motor speed
@@ -459,16 +499,16 @@ void escape_dead_end(void)
  */
 void motor_turn(int speed_r, int speed_l, int32_t pos_right, int32_t pos_left)
 {
-	right_motor_set_pos(0);
-	left_motor_set_pos(0);
-	left_motor_set_speed(0);
-	right_motor_set_speed(0);
+	right_motor_set_pos(OFF);
+	left_motor_set_pos(OFF);
+	left_motor_set_speed(V_NULL);
+	right_motor_set_speed(V_NULL);
 	while(1)
 	{
 		if((abs(right_motor_get_pos()) > pos_right) && (abs(left_motor_get_pos()) > pos_left))
 		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
+			left_motor_set_speed(V_NULL);
+			right_motor_set_speed(V_NULL);
 			break;
 		}
 		else
@@ -485,109 +525,123 @@ uint16_t mm2steps(uint16_t millimeters)
 }
 
 /*
- * @brief	Go along the object to avoid using the IR sensor
+ * @brief				Go along the object to avoid using the IR sensor
  */
 void obj_ir_dodge()
 {
-	int distance[IR_NUMBER] = {0};
+	int distance[IR_NUMBER] = {OFF};
 	ir_values(distance);
 
 	go_along_after_dodge(distance);
 
 	if(dodge_obs == ESCAPE)
 	{
-		motor_turn(DODGE_SPEED, DODGE_SPEED, 290, 290);
-		if(go_along == S_LEFT)
+		motor_turn(DODGE_SPEED, DODGE_SPEED, ESCAPE_SPEED, ESCAPE_SPEED);
+		if(go_along == DIR_LEFT)
 		{
 			motor_turn(-MIN_SPEED, MIN_SPEED, QUAT_TURN,QUAT_TURN);
 		}
-		else if(go_along == S_RIGHT)
+		else if(go_along == DIR_RIGHT)
 		{
 			motor_turn(MIN_SPEED, -MIN_SPEED, QUAT_TURN,QUAT_TURN);
 		}
-		motor_turn(DODGE_SPEED, DODGE_SPEED, 380, 380);
+		motor_turn(DODGE_SPEED, DODGE_SPEED, POS_DODGE, POS_DODGE);
 		dodge_obs = IDLE;
-		go_along = 0;
+		go_along = OFF;
 		old_ir = IR_MID_DIST;
 	}
 }
-
+/*
+ * @brief				go along a wall and corrects the deviation if there is any
+ *
+ * @parameters distance	table with the ir sensor values stored in it
+ */
 void go_along_after_dodge(int* distance)
 {
-	if(dodge_obs == S_RIGHT)
+	if(dodge_obs == DIR_RIGHT)
 	{
-		if(distance[5] >= IR_MID_DIST)
+		if(distance[LEFT_IR_SENS] >= IR_MID_DIST)
 		{
-			if(distance[5] > old_ir)
+			if(distance[LEFT_IR_SENS] > old_ir)
 			{
 				motor_turn(-DODGE_SPEED, DODGE_SPEED, 4*ONE_DEG, 4*ONE_DEG);
 			}
-			else if(distance[5] < old_ir)
+			else if(distance[LEFT_IR_SENS] < old_ir)
 			{
 				motor_turn(DODGE_SPEED, -DODGE_SPEED, 4*ONE_DEG, 4*ONE_DEG);
 			}
 			motor_turn(DODGE_SPEED, DODGE_SPEED, ONE_DEG,ONE_DEG);
-			old_ir = distance[5];
+			old_ir = distance[LEFT_IR_SENS];
 		}
-		else if(distance[6] < IR_FAR)
+		else if(distance[LEFT_45_IR_SENS] < IR_FAR)
 		{
-			go_along = S_RIGHT;
+			go_along = DIR_RIGHT;
 			dodge_obs = ESCAPE;
-			obstacle_ir = 0;
+			obstacle_ir = OFF;
 		}
 	}
-	else if(dodge_obs == S_LEFT)
+	else if(dodge_obs == DIR_LEFT)
 	{
-		if(distance[2] >= IR_MID_DIST-100)
+		if(distance[RIGHT_IR_SENS] >= IR_MID_DIST-10*POS_DODGE)
 		{
-			if(distance[2] > old_ir)
+			if(distance[RIGHT_IR_SENS] > old_ir)
 			{
 				motor_turn(DODGE_SPEED, -DODGE_SPEED, 5*ONE_DEG, 5*ONE_DEG);
 			}
-			else if(distance[2] < old_ir)
+			else if(distance[RIGHT_IR_SENS] < old_ir)
 			{
 				motor_turn(-DODGE_SPEED, DODGE_SPEED, 5*ONE_DEG, 5*ONE_DEG);
 			}
 			motor_turn(DODGE_SPEED, DODGE_SPEED, ONE_DEG,ONE_DEG);
-			old_ir = distance[2];
+			old_ir = distance[RIGHT_IR_SENS];
 		}
-		else if(distance[1] < IR_FAR)
+		else if(distance[RIGHT_45_IR_SENS] < IR_FAR)
 		{
-			go_along = S_LEFT;
+			go_along = DIR_LEFT;
 			dodge_obs = ESCAPE;
-			obstacle_ir = 0;
+			obstacle_ir = OFF;
 		}
 	}
 }
 
+/*
+ * @brief				detect object on the left of the epuck and avoid if there is any
+ *
+ * @parameters distance	table with the ir sensor values stored in it
+ */
 void detect_left_obs(int* distance)
 {
-	//longé assez
-	if(distance[5] >= IR_MID_DIST)
+
+	if(distance[LEFT_IR_SENS] >= IR_MID_DIST)
 	{
-		obstacle_ir = 1;
+		obstacle_ir = ON;
 		go_along_after_dodge(distance);
 	}
 	else
 	{
 		motor_turn(-DODGE_SPEED, DODGE_SPEED, 45*ONE_DEG, 45*ONE_DEG);
 		dodge_obs = ESCAPE;
-		obstacle_ir = 0;
+		obstacle_ir = OFF;
 	}
 }
 
+/*
+ * @brief				detect object on the right of the epuck and avoid if there is any
+ *
+ * @parameters distance	table with the ir sensor values stored in it
+ */
 void detect_right_obs(int* distance)
 {
-	//longé assez
-	if(distance[2] >= IR_MID_DIST)
+
+	if(distance[RIGHT_IR_SENS] >= IR_MID_DIST)
 	{
-		obstacle_ir = 1;
+		obstacle_ir = ON;
 		go_along_after_dodge(distance);
 	}
 	else
 	{
 		motor_turn(DODGE_SPEED, -DODGE_SPEED, 45*ONE_DEG, 45*ONE_DEG);
 		dodge_obs = ESCAPE;
-		obstacle_ir = 0;
+		obstacle_ir = OFF;
 	}
 }

@@ -2,51 +2,52 @@
 #ifndef OBSTACLE_H_
 #define OBSTACLE_H_
 
-//init les sensors
+//init the sensor
 void sensor_init(void);
 
-//lance le thread TOF
+//start the TOF thread
 void object_length_start(void);
 
-//lance le thread IR
+//start the IR thread
 void object_detect_start(void);
 
-//mets le robot a angle droit face a l'obstacle avec les capteurs IRs
+//center the front of the epuck perpendicularly to the wall
 void center_IR(void);
 
-//detecte des obstacle pas en face
+//detect obstacle not in front of the robot, so using the IR rather than the TOF
 void detect_IR(void);
 
-//fonction principale qui g�re le scan de l'obstacle + choix de direction
+//main TOF obstacle avoiding function
 void scan_obstacle(void);
 
-//r�cup�re les valeurs des capteurs IRs
+//put the IR sensor values in a table
 void ir_values(int* valeurs);
 
-//mesure la longueure de l'obstacle a gauche et droite
+//measure the left and right obstacle length
 uint16_t obstacle_length_left(void);
 uint16_t obstacle_length_right(void);
 
-//d�fini dans quelle direction aller
-//void direction_choose(uint16_t* left_side, uint16_t* right_side);
+//choose with direction is the smallest and turn the epuck to start the avoiding
 void direction_choose(uint16_t left_side, uint16_t right_side);
 
-//�vite l'obstacle avec IRs
+//avoid obstacle using the IR sensor
 void obj_ir_dodge(void);
 
-//sort d'un cul de sac
+//escape a dead end it there is one
 void escape_dead_end(void);
 
-//bouge le robot a la vitesse speed_r/l jusqu'� pos_left/right aka le nbr de step
+//move the left/right motor at speed spped_l/speed_r to the right/left wheel position pos_right/pos_left
 void motor_turn(int speed_r, int speed_l, int32_t pos_right, int32_t pos_left);
 
+//convert the number of mm to step
 uint16_t mm2steps(uint16_t millimeters);
 
-void go_along_after_dodge(int* distance);
-
+//turn the robot if there is any obstacle in front of the IR sensor on the right and on the left
 void detect_left_obs(int* distance);
-
 void detect_right_obs(int* distance);
+
+//go along a wall until the end of it
+void go_along_after_dodge(int* distance);
 
 #endif /* OBSTACLE_H_ */
 
