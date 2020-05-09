@@ -2,7 +2,7 @@
 #include "hal.h"
 #include <main.h>
 #include <usbcfg.h>
-#include <chprintf.h>
+#include <stdio.h>
 
 #include <motors.h>
 #include <audio/microphone.h>
@@ -12,7 +12,9 @@
 #include <arm_math.h>
 
 //semaphore
-static BSEMAPHORE_DECL(sendToComputer_sem, TRUE);
+static BSEMAPHORE_DECL(sendToComputer_sem, TRUE); // @suppress("Field cannot be resolved")
+
+//static int8_t old_phase = 0;
 
 //2 times FFT_SIZE because these arrays contain complex numbers (real + imaginary)
 static float micLeft_cmplx_input[2 * FFT_SIZE];
@@ -25,75 +27,177 @@ static float micRight_output[FFT_SIZE];
 static float micFront_output[FFT_SIZE];
 static float micBack_output[FFT_SIZE];
 
-#define MIN_VALUE_THRESHOLD	10000 
+#define MIN_VALUE_THRESHOLD	30000
+#define MAX_VALUE_LIMIT		1000000
+#define INIT_VALUE			0
 
-#define MIN_FREQ		10	//we don't analyze before this index to not use resources for nothing
-#define FREQ_RIGHT		16	//250Hz
-#define FREQ_BACKWARD46	19	//296Hz
-#define FREQ_LENT		23	//359HZ
-#define FREQ_RAPIDE		26	//406Hz
-#define MAX_FREQ		30	//we don't analyze after this index to not use resources for nothing
+#define FREQ_MIN		45	//Start scanning
+#define FREQ_FAST		50	//779Hz
+#define FREQ_MAX		55	//End scanning
+#define FREQ_FAST_L		FREQ_FAST-1
+#define FREQ_FAST_H		FREQ_FAST+1
 
-#define FREQ_LENT_L			(FREQ_LENT-1)
-#define FREQ_LENT_H			(FREQ_LENT+1)
-#define FREQ_RAPIDE_L		(FREQ_RAPIDE-1)
-#define FREQ_RAPIDE_H		(FREQ_RAPIDE+1)
-#define FREQ_RIGHT_L		(FREQ_RIGHT-1)
-#define FREQ_RIGHT_H		(FREQ_RIGHT+1)
-#define FREQ_BACKWARD_L		(FREQ_BACKWARD-1)
-#define FREQ_BACKWARD_H		(FREQ_BACKWARD+1)
+#define FRONT_BACK		1
+#define LEFT_RIGHT		2
 
-#define LEFT			0
-#define RIGHT			1
-#define DIR_FORWARD		2
-#define DIR_BACKWARD	3
-#define STOP			4
+#define MAX_PHASE 		200.0
+#define NOISE_BACK		5
+#define SOUND_IN_FRONT	45
+#define	CORRECTION_LR	15
+
+#define PHASE_INIT 		0
+#define	PHASE_RIGHT		-1
+#define PHASE_LEFT		1
+
+static 	int8_t old_phase = 0;
+static  int8_t dir_sound = DIR_STOP;
+static float coef_right = V_NULL;
+static float coef_left = V_NULL;
+
 /*
 *	Simple function used to detect the highest value in a buffer
 *	and to execute a motor command depending on it
 */
-void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
-	float max_norm = MIN_VALUE_THRESHOLD;
-	int direction = -1;
-	int old_norm_index = -1;
-	int16_t max_norm_index = -1; 
+void sound_remote(float* dataR, float* dataL, float* dataF, float* dataB)
+{
+	float max_norm_r = MIN_VALUE_THRESHOLD;
+	float max_norm_l = MIN_VALUE_THRESHOLD;
+	float max_norm_f = MIN_VALUE_THRESHOLD;
+	float max_norm_b = MIN_VALUE_THRESHOLD;
 
-	//search for the highest peak
-	for(uint16_t i = MIN_FREQ ; i <= MAX_FREQ ; i++){
-		if(dataL[i] > max_norm)
-		{
-			max_norm = dataL[i];
-			max_norm_index = i;
-			direction = LEFT;
-		}
-		if(dataR[i] > max_norm)
-		{
-			max_norm = dataR[i];
-			max_norm_index = i;
-			direction = RIGHT;
-		}
-		if(dataF[i] > max_norm)
-		{
-			max_norm = dataF[i];
-			max_norm_index = i;
-			direction = DIR_FORWARD;
-		}
-		if(dataB[i] > max_norm)
-		{
-			max_norm = dataB[i];
-			max_norm_index = i;
-			direction = DIR_BACKWARD;
-		}
-	}
-	if(old_norm_index == -1 || old_norm_index == max_norm_index)
+	int8_t max_index_l = INIT_VALUE;
+	int8_t max_index_r = INIT_VALUE;
+	int8_t max_index_f = INIT_VALUE;
+	int8_t max_index_b = INIT_VALUE;
+
+	int8_t direction = DIR_STOP;
+
+	//Search for the maximum sound intensity between the 4 mics to determine the direction and frequency peak
+	for(int i=FREQ_MIN; i <=FREQ_MAX; i++)
 	{
-		old_norm_index = max_norm_index;
-		commande_moteur(direction, max_norm_index);
+		//Maximum intensity and frequency peak of the mics
+		if(dataL[i]>=max_norm_l)
+		{
+			max_norm_l=dataL[i];
+			max_index_l=i;
+		}
+		if(dataR[i]>=max_norm_r)
+		{
+			max_norm_r=dataR[i];
+			max_index_r=i;
+		}
+		if(dataF[i]>=max_norm_f)
+		{
+			max_norm_f=dataF[i];
+			max_index_f=i;
+		}
+		if(dataB[i]>=max_norm_b)
+		{
+			max_norm_b=dataB[i];
+			max_index_b=i;
+		}
 	}
-	else
-		commande_moteur(STOP, max_norm_index);
-}
 
+	float phase_lr = PHASE_INIT;
+	float phase_fb = PHASE_INIT;
+
+	//Get phase between front-back and left-right
+	if(max_index_r == max_index_l && max_index_r >= FREQ_FAST_L && max_index_r <= FREQ_FAST_H)
+	{
+		phase_lr = phase(max_index_l, LEFT_RIGHT);
+	}
+	if(max_index_f == max_index_b && max_index_f >= FREQ_FAST_L && max_index_f <= FREQ_FAST_H)
+	{
+		phase_fb = phase(max_index_f, FRONT_BACK);
+	}
+
+	//Chose the direction forward or backward
+	if(phase_fb > PHASE_INIT && fabs(phase_fb) <= MAX_PHASE/100)
+	{
+		direction = DIR_FORWARD;
+	}
+	else if(phase_fb < PHASE_INIT && fabs(phase_fb) <= MAX_PHASE/100)
+	{
+		direction = DIR_BACKWARD;
+	}
+
+	phase_lr = round(phase_lr*100);
+
+	//Choose to turn right or left
+	if(direction == DIR_BACKWARD)
+	{
+		//Back left -> turn left
+		if(phase_lr > NOISE_BACK && fabs(phase_lr) <= MAX_PHASE)
+		{
+			coef_right = SPEED_POS;
+			coef_left = SPEED_NEG;
+			old_phase = PHASE_LEFT;
+		}
+		//Back right -> turn right
+		else if(phase_lr < -NOISE_BACK && fabs(phase_lr) <= MAX_PHASE)
+		{
+			coef_right = SPEED_NEG;
+			coef_left = SPEED_POS;
+			old_phase = PHASE_RIGHT;
+		}
+		dir_sound = DIR_BACKWARD;
+	}
+	else if(direction == DIR_FORWARD)
+	{
+		//The sound is more or less in front of the robot
+		if(fabs(phase_lr) <= SOUND_IN_FRONT && fabs(phase_lr) <= MAX_PHASE)
+		{
+			//Small correction on the left
+			if(phase_lr > CORRECTION_LR && old_phase == 0)
+			{
+				coef_right = SPEED_F_POS;
+				coef_left = SPEED_F_NEG;
+				old_phase = PHASE_LEFT;
+				dir_sound = DIR_LEFT;
+			}
+			//Small correction on the right
+			else if(phase_lr < -CORRECTION_LR && old_phase == 0)
+			{
+				coef_right = SPEED_F_NEG;
+				coef_left = SPEED_F_POS;
+				old_phase = PHASE_RIGHT;
+				dir_sound = DIR_RIGHT;
+			}
+			//The sound is in front of the robot
+			else
+			{
+				coef_right = SPEED_POS;
+				coef_left = SPEED_POS;
+				old_phase = PHASE_INIT;
+				dir_sound = DIR_FORWARD;
+			}
+		}
+		//The sound comes from the left
+		else if(phase_lr > SOUND_IN_FRONT && fabs(phase_lr) <= MAX_PHASE)
+		{
+			coef_right = SPEED_POS;
+			coef_left = SPEED_NEG;
+			dir_sound = DIR_LEFT;
+		}
+		//The sound comes from the right
+		else if(phase_lr < -SOUND_IN_FRONT && fabs(phase_lr) <= MAX_PHASE)
+		{
+			coef_right = SPEED_NEG;
+			coef_left = SPEED_POS;
+			dir_sound = DIR_RIGHT;
+		}
+	}
+
+	//Stop the motors if the intensity is not enough or to big
+	if(max_norm_f >= MAX_VALUE_LIMIT || max_norm_f <= MIN_VALUE_THRESHOLD)
+	{
+		coef_right = V_NULL;
+		coef_left = V_NULL;
+		dir_sound = DIR_STOP;
+	}
+	//Command the motors
+	motor_command(coef_right, coef_left);
+}
 
 /*
 *	Callback called when the demodulation of the four microphones is done.
@@ -107,15 +211,12 @@ void sound_remote(float* dataR, float* dataL, float* dataB, float* dataF){
 void processAudioData(int16_t *data, uint16_t num_samples){
 
 	/*
-	*
 	*	We get 160 samples per mic every 10ms
 	*	So we fill the samples buffers to reach
 	*	1024 samples, then we compute the FFTs.
-	*
 	*/
-
 	static uint16_t nb_samples = 0;
-	static uint8_t mustSend = 0;
+	//static uint8_t mustSend = 0;
 
 	//loop to fill the buffers
 	for(uint16_t i = 0 ; i < num_samples ; i+=4){
@@ -141,48 +242,34 @@ void processAudioData(int16_t *data, uint16_t num_samples){
 	}
 
 	if(nb_samples >= (2 * FFT_SIZE)){
+
 		/*	FFT proccessing
-		*
 		*	This FFT function stores the results in the input buffer given.
 		*	This is an "In Place" function. 
 		*/
-
 		doFFT_optimized(FFT_SIZE, micRight_cmplx_input);
 		doFFT_optimized(FFT_SIZE, micLeft_cmplx_input);
 		doFFT_optimized(FFT_SIZE, micFront_cmplx_input);
 		doFFT_optimized(FFT_SIZE, micBack_cmplx_input);
 
 		/*	Magnitude processing
-		*
 		*	Computes the magnitude of the complex numbers and
 		*	stores them in a buffer of FFT_SIZE because it only contains
 		*	real numbers.
-		*
 		*/
 		arm_cmplx_mag_f32(micRight_cmplx_input, micRight_output, FFT_SIZE);
 		arm_cmplx_mag_f32(micLeft_cmplx_input, micLeft_output, FFT_SIZE);
 		arm_cmplx_mag_f32(micFront_cmplx_input, micFront_output, FFT_SIZE);
 		arm_cmplx_mag_f32(micBack_cmplx_input, micBack_output, FFT_SIZE);
 
-		//sends only one FFT result over 10 for 1 mic to not flood the computer
-		//sends to UART3
-		if(mustSend > 8){
-			//signals to send the result to the computer
-			chBSemSignal(&sendToComputer_sem);
-			mustSend = 0;
-		}
 		nb_samples = 0;
-		mustSend++;
 
-		sound_remote(micRight_output, micLeft_output, micBack_output, micFront_output);
+		sound_remote(micRight_output, micLeft_output, micFront_output, micBack_output);
 	}
 }
 
-void wait_send_to_computer(void){
-	chBSemWait(&sendToComputer_sem);
-}
-
-float* get_audio_buffer_ptr(BUFFER_NAME_t name){
+float* get_audio_buffer_ptr(BUFFER_NAME_t name)
+{
 	if(name == LEFT_CMPLX_INPUT){
 		return micLeft_cmplx_input;
 	}
@@ -212,90 +299,48 @@ float* get_audio_buffer_ptr(BUFFER_NAME_t name){
 	}
 }
 
-void commande_moteur(int direction, int16_t max_norm_index)
+/*
+ * 	Simple function to get the phase
+ * 	index is used to find the frequency
+ * 	state:
+ * 	FRONT_BACK ->	return the phase between the front mic and the back one
+ * 	LEFT_RIGHT ->	return the phase between the left mic and the right one
+ */
+float phase(int8_t index, int8_t state)
 {
-	//go forward
-	if(direction == DIR_FORWARD)
+	float phase = PHASE_INIT;
+	if(state == LEFT_RIGHT)
 	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
-		{
-			left_motor_set_speed(600);
-			right_motor_set_speed(600);
-		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
-		{
-			left_motor_set_speed(2000);
-			right_motor_set_speed(2000);
-		}
-		else
-		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
-		}
-
+		float phase_right = PHASE_INIT;
+		float phase_left = PHASE_INIT;
+		phase_right = (float)atan(micRight_cmplx_input[2*index+1]/micRight_cmplx_input[2*index]);
+		phase_left = (float)atan(micLeft_cmplx_input[2*index+1]/micLeft_cmplx_input[2*index]);
+		phase = (phase_left-phase_right);
 	}
-	//turn left
-	else if(direction == LEFT)
+	else if(state == FRONT_BACK)
 	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
-		{
-			left_motor_set_speed(-600);
-			right_motor_set_speed(600);
-		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
-		{
-			left_motor_set_speed(-2000);
-			right_motor_set_speed(2000);
-		}
-		else
-		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
-		}
+		float phase_front = PHASE_INIT;
+		float phase_back = PHASE_INIT;
+		phase_front = (float)atan(micFront_cmplx_input[2*index+1]/micFront_cmplx_input[2*index]);
+		phase_back = (float)atan(micBack_cmplx_input[2*index+1]/micBack_cmplx_input[2*index]);
+		phase = (phase_front-phase_back);
 	}
-	//turn right
-	else if(direction == RIGHT)
-	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
-		{
-			left_motor_set_speed(600);
-			right_motor_set_speed(-600);
-		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
-		{
-			left_motor_set_speed(2000);
-			right_motor_set_speed(-2000);
-		}
-		else
-		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
-		}
-	}
-	//go backward
-	else if(direction == DIR_BACKWARD)
-	{
-		if(max_norm_index >= FREQ_LENT_L && max_norm_index <= FREQ_LENT_H)
-		{
-			left_motor_set_speed(-600);
-			right_motor_set_speed(-600);
-		}
-		else if(max_norm_index >= FREQ_RAPIDE_L && max_norm_index <= FREQ_RAPIDE_H)
-		{
-			left_motor_set_speed(-2000);
-			right_motor_set_speed(-2000);
-		}
-		else
-		{
-			left_motor_set_speed(0);
-			right_motor_set_speed(0);
-		}
-	}
-	else
-	{
-		left_motor_set_speed(0);
-		right_motor_set_speed(0);
-	}
-
+	return phase;
 }
 
+/*
+ * 	Function to set the speed to the motors
+ */
+void motor_command(float coef_r, float coef_l)
+{
+	right_motor_set_speed(coef_r*V_SLOW);
+	left_motor_set_speed(coef_l*V_SLOW);
+}
+
+/*
+ * 	Function to get the direction the sound comes from
+ */
+int8_t get_dir_sound()
+{
+	return dir_sound;
+}
